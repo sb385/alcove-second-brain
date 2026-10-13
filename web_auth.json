@@ -1,8 +1,8 @@
 {
  "upload_token_sha256": "0091edadc409818512870984fa6d16f9308fd00142119fddf271988d5ef1ad1d",
  "password": {
-  "salt": "e67df9cceedeb3ef800e6eda6909cd6a",
+  "salt": "3b7ffe68f94e3aff8d62ab167ac1da39",
   "iterations": 310000,
-  "hash": "621b6a33316d132db3025998134d076f38e2620b649b4401d8b9600ac375c383"
+  "hash": "2deb8a2a763bdab7d46a6142a24af9aae5bd13b9eb45b08b2c1f9646444f6de4"
  }
 }
