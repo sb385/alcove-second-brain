@@ -26,10 +26,22 @@ def main() -> int:
         "excel": settings.master_xlsx,
         "summary": out / "whatsapp_summary.txt",
     }
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # A password changed on the website lives only on the server, and redeploys
+    # wipe it. Keep a copy (hash only) here and hand it back if it's missing.
+    backup = settings.data_dir / "web_auth_override.json"
+    form = {}
+    state = requests.get(f"{url}/api/auth-state", headers=headers, timeout=30)
+    if state.ok and state.json():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        backup.write_text(state.text, encoding="utf-8")
+    elif state.ok and backup.exists():
+        form["auth_override"] = backup.read_text(encoding="utf-8")
+
     files = {k: (p.name, p.open("rb")) for k, p in paths.items() if p.exists()}
     try:
-        r = requests.post(f"{url}/api/upload", files=files,
-                          headers={"Authorization": f"Bearer {token}"}, timeout=60)
+        r = requests.post(f"{url}/api/upload", files=files, data=form, headers=headers, timeout=60)
     finally:
         for _, fh in files.values():
             fh.close()

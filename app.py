@@ -68,10 +68,31 @@ _AUTH_FILE = Path(__file__).with_name("web_auth.json")
 _AUTH = json.loads(_AUTH_FILE.read_text(encoding="utf-8")) if _AUTH_FILE.exists() else {}
 
 
+# A password changed on the website is stored here (hash only). Redeploys wipe
+# STORE, so the PC's publish step backs it up and restores it on upload.
+OVERRIDE = STORE / "auth_override.json"
+PBKDF2_ITERATIONS = 310_000
+
+
+def _password_record() -> dict | None:
+    if OVERRIDE.exists():
+        try:
+            return json.loads(OVERRIDE.read_text(encoding="utf-8"))["password"]
+        except (ValueError, KeyError):
+            pass
+    return _AUTH.get("password")
+
+
+def _hash_password(password: str) -> dict:
+    salt = secrets.token_bytes(16)
+    return {"salt": salt.hex(), "iterations": PBKDF2_ITERATIONS,
+            "hash": hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS).hex()}
+
+
 def _check_password(given: str) -> bool:
     if os.environ.get("DASHBOARD_PASSWORD"):
         return _same(given, os.environ["DASHBOARD_PASSWORD"])
-    rec = _AUTH.get("password")
+    rec = _password_record()
     if not rec or not given:
         return False
     digest = hashlib.pbkdf2_hmac("sha256", given.encode(), bytes.fromhex(rec["salt"]), rec["iterations"])
@@ -88,7 +109,7 @@ def _check_token(given: str) -> bool:
 def login_required(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
-        if not (os.environ.get("DASHBOARD_PASSWORD") or _AUTH.get("password")):
+        if not (os.environ.get("DASHBOARD_PASSWORD") or _password_record()):
             return fn(*a, **kw)  # no password configured: open (owner's choice for now)
         auth = request.authorization
         if not auth or not _check_password(auth.password or ""):
@@ -114,7 +135,8 @@ def dashboard():
     html = path.read_text(encoding="utf-8")
     links = ('<div style="max-width:1180px;margin:0 auto;padding:12px 16px 0;font:14px system-ui">'
              f'<a href="{PREFIX}/excel">Download Excel</a> · '
-             f'<a href="{PREFIX}/summary">WhatsApp summary</a></div>')
+             f'<a href="{PREFIX}/summary">WhatsApp summary</a> · '
+             f'<a href="{PREFIX}/change-password">Change password</a></div>')
     return html.replace("<main>", links + "<main>", 1)
 
 
@@ -149,7 +171,69 @@ def upload():
             f.save(tmp)
             tmp.replace(STORE / name)
             saved.append(name)
+    # Restore a website-set password after a redeploy wiped it (never overwrite one).
+    backup = request.form.get("auth_override")
+    if backup and not OVERRIDE.exists():
+        rec = json.loads(backup)["password"]
+        if {"salt", "iterations", "hash"} <= set(rec):
+            OVERRIDE.write_text(json.dumps({"password": rec}), encoding="utf-8")
+            saved.append("password (restored)")
     return {"saved": saved}
+
+
+_FORM = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Change password</title>
+<style>body{{margin:0;background:#f6f5f2;color:#1d2430;font:15px/1.45 system-ui,sans-serif}}
+@media(prefers-color-scheme:dark){{body{{background:#121417;color:#e8eaed}}input{{background:#1b1e23;color:#e8eaed;border-color:#2b2f36}}}}
+main{{max-width:420px;margin:40px auto;padding:0 16px}}label{{display:block;margin:14px 0 4px;font-weight:600}}
+input{{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;font:inherit}}
+button{{margin-top:18px;padding:10px 16px;border:0;border-radius:8px;background:#1f3a5f;color:#fff;font:inherit;cursor:pointer}}
+.msg{{padding:10px;border-radius:8px;margin-top:14px}}.err{{background:#fde8e7;color:#b42318}}.ok{{background:#e7f6ec;color:#067647}}
+a{{color:#1f6fd1}}</style></head><body><main>
+<p><a href="{prefix}/">← Dashboard</a></p><h2>Change password</h2>{msg}
+<form method="post" autocomplete="off">
+<label for="c">Current password</label><input id="c" name="current" type="password" required>
+<label for="n">New password (at least 8 characters)</label><input id="n" name="new" type="password" minlength="8" required>
+<label for="r">Repeat new password</label><input id="r" name="repeat" type="password" minlength="8" required>
+<button type="submit">Change password</button></form></main></body></html>"""
+
+
+def _form(msg: str = "", ok: bool = False) -> str:
+    box = f'<div class="msg {"ok" if ok else "err"}">{msg}</div>' if msg else ""
+    return _FORM.format(prefix=PREFIX, msg=box)
+
+
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if os.environ.get("DASHBOARD_PASSWORD"):
+        return _form("The password is set on the server and can't be changed here.")
+    if request.method == "GET":
+        return _form()
+    current = request.form.get("current", "")
+    new = request.form.get("new", "")
+    # Asking for the current password again also stops other sites from
+    # changing it through the browser's saved login.
+    if not _check_password(current):
+        return _form("Current password is wrong."), 400
+    if len(new) < 8:
+        return _form("New password must be at least 8 characters."), 400
+    if new != request.form.get("repeat", ""):
+        return _form("The two new passwords don't match."), 400
+    tmp = OVERRIDE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"password": _hash_password(new)}), encoding="utf-8")
+    tmp.replace(OVERRIDE)
+    return _form("Password changed. Your browser will ask you to log in again with the "
+                 "new password.", ok=True)
+
+
+@app.get("/api/auth-state")
+def auth_state():
+    """For the PC's backup: the website-set password hash, if any (token required)."""
+    sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not _check_token(sent):
+        abort(401)
+    return json.loads(OVERRIDE.read_text(encoding="utf-8")) if OVERRIDE.exists() else {}
 
 
 @app.get("/health")
