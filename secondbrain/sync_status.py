@@ -100,40 +100,36 @@ def cards(log: dict, now: datetime) -> list[dict]:
 
 
 CSS = """
-.sync{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:18px 0 0}
-.sync-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-.sync-head h2{margin:0}.sync-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:10px}
-.src{border:1px solid var(--line);border-radius:8px;padding:10px 12px;border-left:4px solid var(--line)}
-.src.ok{border-left-color:var(--green)}.src.failed{border-left-color:var(--red)}
-.src.stale{border-left-color:var(--amber)}.src.none{border-left-color:var(--mute)}
-.src-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
-.src-name{font-weight:600}.badge{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--chip);white-space:nowrap}
-.src.ok .badge{color:var(--green)}.src.failed .badge{color:var(--red)}.src.stale .badge{color:var(--amber)}
-.src .m{margin-top:4px}
+.sync{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;background:var(--card);
+border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:14px 0 0;font-size:14px}
+.sync .src{white-space:nowrap;font-weight:600}.sync .src i{font-style:normal;margin-right:3px}
+.sync .ok i{color:var(--green)}.sync .failed i{color:var(--red)}.sync .stale i{color:var(--amber)}.sync .none i{color:var(--mute)}
+.sync .when{margin-left:auto;color:var(--mute);white-space:nowrap}
 """
 
-_ICON = {"ok": "✓", "failed": "!", "stale": "◷", "none": "–"}
+_ICON = {"ok": "✓", "failed": "✗", "stale": "◷", "none": "–"}
+
+
+def _last_sync(log: dict) -> str:
+    runs = [e["last_run"] for e in log.values() if e.get("last_run")]
+    if not runs:
+        return "Not synced yet"
+    t = datetime.fromisoformat(max(runs)).astimezone(settings.tz)
+    return f"Last sync {t:%d %b %Y, %H:%M}"
 
 
 def html_box(log: dict, now: datetime) -> str:
-    cs = cards(log, now)
-    healthy = sum(1 for c in cs if c["state"] == "ok")
+    """One compact line: a tick per source, then the last sync date and time.
+    Hover a source for details (counts, or why it failed)."""
     items = []
-    for c in cs:
-        lines = "".join(f'<div class="m">{escape(x)}</div>' for x in (c["when"], c["counts"], c["note"]) if x)
-        items.append(
-            f'<div class="src {c["state"]}"><div class="src-top"><span class="src-name">{escape(c["label"])}</span>'
-            f'<span class="badge">{_ICON[c["state"]]} {escape(c["badge"])}</span></div>{lines}</div>'
-        )
-    return (f'<section class="sync"><div class="sync-head"><h2>Data sync</h2>'
-            f'<span class="sub">{healthy} of {len(cs)} sources up to date</span></div>'
-            f'<div class="sync-grid">{"".join(items)}</div></section>')
+    for c in cards(log, now):
+        tip = " · ".join(x for x in (c["badge"], c["when"], c["counts"], c["note"]) if x)
+        items.append(f'<span class="src {c["state"]}" title="{escape(tip)}">'
+                     f'<i>{_ICON[c["state"]]}</i>{escape(c["label"])}</span>')
+    return f'<div class="sync">{"".join(items)}<span class="when">{_last_sync(log)}</span></div>'
 
 
 def markdown_box(log: dict, now: datetime) -> list[str]:
     emoji = {"ok": "✅", "failed": "⚠️", "stale": "🕒", "none": "➖"}
-    lines = ["## Data sync"]
-    for c in cards(log, now):
-        detail = " · ".join(x for x in (c["when"], c["counts"], c["note"]) if x)
-        lines.append(f"- {emoji[c['state']]} **{c['label']}**: {c['badge']}" + (f" ({detail})" if detail else ""))
-    return lines
+    line = " · ".join(f"{emoji[c['state']]} {c['label']}" for c in cards(log, now))
+    return [f"{line} — {_last_sync(log)}"]
