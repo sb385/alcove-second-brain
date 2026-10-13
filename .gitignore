@@ -21,3 +21,6 @@ venv/
 
 # Cloud-mode data worktree (its own branch)
 .brain-data/
+
+# Per-run working files (contain business data)
+.run/

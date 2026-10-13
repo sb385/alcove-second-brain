@@ -2,7 +2,7 @@
 # This PC's clock is on India Standard Time, so 08:00 local = 08:00 IST.
 # StartWhenAvailable makes it catch up if the PC was off/asleep at 08:00.
 $ErrorActionPreference = "Stop"
-$script = Join-Path $PSScriptRoot "run_daily.ps1"
+$script = Join-Path $PSScriptRoot "run_routine_local.ps1"   # API-key mode: run_daily.ps1
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`"" `
     -WorkingDirectory $PSScriptRoot
