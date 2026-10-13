@@ -137,6 +137,14 @@ padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
 .tab .n{color:var(--mute);margin-left:5px;font-size:12px}
 .tab.on{background:var(--accent);border-color:var(--accent);color:var(--card)}.tab.on .n{color:var(--card);opacity:.85}
 .ic{margin-right:2px}
+.kpi{position:relative;cursor:default}.kpi:focus{outline:2px solid var(--accent);outline-offset:2px}
+.pop{display:none;position:absolute;top:100%;left:0;z-index:30;padding-top:6px;width:min(380px,calc(100vw - 32px))}
+.pop.r{left:auto;right:0}
+.kpi:hover .pop,.kpi.open .pop{display:block}
+.pop-in{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+max-height:min(380px,60vh);overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.pop-h{font-weight:600;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.pop li{padding:7px 0}.pt{font-size:14px;font-weight:500;overflow-wrap:anywhere}
 """
 
 TABS_JS = """
@@ -150,7 +158,7 @@ TABS_JS = """
     document.querySelectorAll('.grp').forEach(function(g){
       g.hidden = !g.querySelector('li:not([hidden])');
     });
-    document.querySelectorAll('section').forEach(function(sec){
+    document.querySelectorAll('section, .pop').forEach(function(sec){
       var none=sec.querySelector('.none-here'); if(!none) return;
       none.hidden = !!sec.querySelector('li:not([hidden])') || !sec.querySelector('li');
     });
@@ -161,6 +169,20 @@ TABS_JS = """
     try{ history.replaceState(null,'',p==='all'?location.pathname+location.search:'#'+p); }catch(e){}
   }
   tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.tab);});});
+  var kpis=[].slice.call(document.querySelectorAll('.kpi'));
+  function place(k){var p=k.querySelector('.pop'); if(!p) return; p.classList.remove('r');
+    var r=k.getBoundingClientRect(); if(r.left+p.offsetWidth>window.innerWidth-8||r.left+380>window.innerWidth){p.classList.add('r');}}
+  kpis.forEach(function(k){
+    k.addEventListener('mouseenter',function(){place(k);});
+    k.addEventListener('click',function(e){
+      if(e.target.closest('.pop')) return;
+      var was=k.classList.contains('open');
+      kpis.forEach(function(o){o.classList.remove('open');});
+      if(!was){place(k);k.classList.add('open');}
+    });
+  });
+  document.addEventListener('click',function(e){ if(!e.target.closest('.kpi')) kpis.forEach(function(o){o.classList.remove('open');}); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') kpis.forEach(function(o){o.classList.remove('open');}); });
   var start=(location.hash||'').slice(1);
   show(tabs.some(function(t){return t.dataset.tab===start;})?start:'all');
 })();
@@ -177,12 +199,38 @@ def _per_profile(rows, key_of) -> dict:
     return out
 
 
-def _kpi(label: str, counts: dict, alert: bool = False) -> str:
+POP_MAX = 15
+
+
+def _pop(title: str, items: list[tuple[str, str, str]]) -> str:
+    """Hover/tap panel for a KPI card. items = (profile key, main text, detail line)."""
+    if not items:
+        body = '<p class="empty">Nothing here.</p>'
+    else:
+        lis = "".join(
+            '<li data-p="%s"><div class="pt">%s</div>%s</li>'
+            % (k, escape(t), '<div class="m">%s</div>' % escape(m) if m else "")
+            for k, t, m in items
+        )
+        body = f'<ul>{lis}</ul><p class="empty none-here" hidden>Nothing for this profile.</p>'
+    return f'<div class="pop" role="tooltip"><div class="pop-in"><div class="pop-h">{escape(title)}</div>{body}</div></div>'
+
+
+def _kpi(label: str, counts: dict, alert: bool = False, items: list | None = None) -> str:
     n = counts["all"]
     cls = "red" if alert and n else ""
     data = escape(json.dumps(counts), quote=True)
-    return (f'<div class="kpi"><b class="{cls}" data-v="{data}"'
-            f'{" data-alert=1" if alert else ""}>{n}</b><span>{escape(label)}</span></div>')
+    pop = _pop(label, items) if items is not None else ""
+    return (f'<div class="kpi" tabindex="0"><b class="{cls}" data-v="{data}"'
+            f'{" data-alert=1" if alert else ""}>{n}</b><span>{escape(label)}</span>{pop}</div>')
+
+
+def _row_items(rows, text_col: str, meta) -> list[tuple[str, str, str]]:
+    return [(_pk(r.get("Profile")), str(r.get(text_col) or ""), meta(r)) for r in rows]
+
+
+def _dot(*parts) -> str:
+    return " · ".join(str(x) for x in parts if x)
 
 
 def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
@@ -222,8 +270,18 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
     if od_html:
         od_html.append('<p class="empty none-here" hidden>Nothing overdue for this profile.</p>')
 
-    meet_kpi = (_kpi("Meetings today", _per_profile(todays, lambda m: _meeting_profile(store, m) or "none"))
+    meet_items = [(_meeting_profile(store, m), m.title,
+                   "All day" if m.all_day else f"{clock(m.start)}–{clock(m.end)}") for m in todays]
+    meet_kpi = (_kpi("Meetings today", _per_profile(todays, lambda m: _meeting_profile(store, m) or "none"),
+                     items=meet_items)
                 if meetings is not None else '<div class="kpi"><b>–</b><span>Meetings today</span></div>')
+    act_items = [(_pk(a.profile), a.text, _dot(a.id, a.kind, a.flag)) for a in act]
+    appr_items = _row_items(pending, "Item", lambda r: _dot(r.get("ID"), r.get("Requested By"),
+                                                             r.get("Amount"), f"due {r['Due']}" if r.get("Due") else ""))
+    od_items = _row_items(od_rows, "Item", lambda r: _dot(r.get("ID"), r.get("Owner"), f"{r['_late']}d late"))
+    oc_items = _row_items(sorted(open_c, key=lambda r: str(r.get("Due") or "9999")), "Item",
+                          lambda r: _dot(r.get("ID"), r.get("Owner"), f"due {r['Due']}" if r.get("Due") else ""))
+    hr_items = _row_items(high, "Risk", lambda r: _dot(r.get("ID"), r.get("Project"), r.get("Owner")))
     greet = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -233,12 +291,12 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
 {sync_status.html_box(sync, now) if sync is not None else ""}
 <nav class="tabs" aria-label="Profiles">{"".join(tabs)}</nav>
 <div class="kpis">
-{_kpi("Act today", _per_profile(act, lambda a: _pk(a.profile)))}
+{_kpi("Act today", _per_profile(act, lambda a: _pk(a.profile)), items=act_items)}
 {meet_kpi}
-{_kpi("Approvals waiting on you", _per_profile(pending, row_pk))}
-{_kpi("Overdue commitments", _per_profile(od_rows, row_pk), alert=True)}
-{_kpi("Open commitments", _per_profile(open_c, row_pk))}
-{_kpi("Open high risks", _per_profile(high, row_pk), alert=True)}
+{_kpi("Approvals waiting on you", _per_profile(pending, row_pk), items=appr_items)}
+{_kpi("Overdue commitments", _per_profile(od_rows, row_pk), alert=True, items=od_items)}
+{_kpi("Open commitments", _per_profile(open_c, row_pk), items=oc_items)}
+{_kpi("Open high risks", _per_profile(high, row_pk), alert=True, items=hr_items)}
 </div>
 <div class="grid">
 <section><h2>Act today</h2>{_actions(act, "Nothing urgent. Clear runway.")}</section>
