@@ -14,8 +14,6 @@ from .sync_status import clock
 CSS = """
 :root{--bg:#f6f5f2;--card:#fff;--ink:#1d2430;--mute:#6b7280;--line:#e5e2dc;
 --accent:#1f3a5f;--red:#b42318;--amber:#b54708;--green:#067647;--chip:#eef1f5}
-@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e23;--ink:#e8eaed;
---mute:#9aa1ab;--line:#2b2f36;--accent:#8fb3e0;--red:#f97066;--amber:#fdb022;--green:#47cd89;--chip:#252a31}}
 *{box-sizing:border-box}html,body{overflow-x:hidden}body{margin:0;background:var(--bg);color:var(--ink);
 font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}
@@ -38,6 +36,107 @@ a{color:var(--accent)}.empty{color:var(--mute);font-style:italic}
 .time{font-variant-numeric:tabular-nums;color:var(--accent);margin-right:4px}
 .prep{font-size:13px;margin-top:4px;color:var(--ink);opacity:.85}.past{opacity:.5}
 """
+
+
+THEMES = [  # key, label, swatch (picker dot)
+    ("navy", "Navy & Gold", "linear-gradient(135deg,#0f2343 50%,#c9a227 50%)"),
+    ("emerald", "Emerald", "linear-gradient(135deg,#065f46 50%,#14b8a6 50%)"),
+    ("royal", "Royal Purple", "linear-gradient(135deg,#3b1f8f 50%,#e64980 50%)"),
+    ("sunset", "Sunset", "linear-gradient(135deg,#9a3412 50%,#f59e0b 50%)"),
+    ("midnight", "Midnight (dark)", "linear-gradient(135deg,#0e1320 50%,#7aa2ff 50%)"),
+]
+DEFAULT_THEME = "navy"
+
+THEME_CSS = """
+:root,:root[data-theme=navy]{--bg:#f3f5f9;--card:#fff;--ink:#14213d;--mute:#5c677d;--line:#e3e8f0;--chip:#eef2f7;
+--accent:#1d3557;--accent-soft:#e7edf6;--gold:#c9a227;--hero1:#0f2343;--hero2:#24467d}
+:root[data-theme=emerald]{--bg:#f0f7f4;--card:#fff;--ink:#0f2e25;--mute:#55706a;--line:#d9ebe4;--chip:#e8f3ee;
+--accent:#0b7a5b;--accent-soft:#e1f3ec;--gold:#2dd4bf;--hero1:#064e3b;--hero2:#0d9488}
+:root[data-theme=royal]{--bg:#f6f4fb;--card:#fff;--ink:#241a3a;--mute:#6b6385;--line:#e7e2f3;--chip:#efebf8;
+--accent:#5b3cc4;--accent-soft:#ede8fb;--gold:#f472b6;--hero1:#2e1a78;--hero2:#7c3aed}
+:root[data-theme=sunset]{--bg:#fbf6f2;--card:#fff;--ink:#3a2418;--mute:#7c6457;--line:#f0e3d9;--chip:#f8ece3;
+--accent:#c2410c;--accent-soft:#fdeee4;--gold:#fbbf24;--hero1:#7c2d12;--hero2:#ea580c}
+:root[data-theme=midnight]{--bg:#0e1320;--card:#161d2e;--ink:#e6e9f2;--mute:#97a0b8;--line:#26304a;--chip:#1f2740;
+--accent:#8fb0ff;--accent-soft:#1f2a45;--gold:#ffc861;--hero1:#131c38;--hero2:#33449a;
+--red:#ff8787;--red-soft:#3a1d24;--amber:#ffc078;--amber-soft:#3a2c17;--blue:#8fb0ff;--blue-soft:#1d2a4a;
+--green:#69db7c;--green-soft:#183323;--shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25)}
+:root{--red:#c92a2a;--red-soft:#fff0f0;--amber:#b35c00;--amber-soft:#fff4e5;--blue:#1c64d1;--blue-soft:#eaf1fe;
+--green:#2b8a3e;--green-soft:#ebf8ef;--shadow:0 1px 2px rgba(16,24,40,.05),0 6px 18px rgba(16,24,40,.06)}
+body{background:var(--bg)}
+/* banner */
+.hero{background:linear-gradient(135deg,var(--hero1),var(--hero2));color:#fff;border-radius:18px;padding:22px 22px 16px;
+box-shadow:0 14px 34px -12px var(--hero1);position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;
+background:radial-gradient(circle,rgba(255,255,255,.16),transparent 70%);pointer-events:none}
+.hero header{align-items:center}.hero h1{color:#fff;font-size:25px;letter-spacing:-.01em}
+.hero .sub{color:rgba(255,255,255,.78)}
+.hero .sync{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;margin-top:16px}
+.hero .sync .when{color:rgba(255,255,255,.78)}.hero .sync .ok i{color:var(--gold)}
+.hero .sync .failed i{color:#ffb3b3}.hero .sync .stale i{color:#ffd8a8}
+.theme-pick{display:flex;gap:7px;align-items:center;font-size:12px;color:rgba(255,255,255,.8)}
+.theme-pick button{width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.55);padding:0;cursor:pointer}
+.theme-pick button.on{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.35)}
+/* tabs with a colour per profile */
+.tabs{margin-top:16px}.tab{box-shadow:var(--shadow);border-color:transparent;font-weight:500}
+.tab::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:var(--pc,var(--mute))}
+.tab[data-tab=all]::before{display:none}
+.tab[data-tab=triveni]{--pc:#f76707}.tab[data-tab=sangam]{--pc:#1c7ed6}.tab[data-tab=sundarban]{--pc:#37b24d}
+.tab[data-tab=adllp]{--pc:#7048e8}.tab[data-tab=caliber]{--pc:#d6336c}.tab[data-tab=personal]{--pc:#f59f00}
+.tab.on{background:var(--accent);color:#fff}.tab.on::before{background:#fff}
+:root[data-theme=midnight] .tab.on{color:#0e1320}
+/* number cards: own colour + icon each */
+.kpi{border:0;border-top:4px solid var(--kc);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px}
+.kpi b{color:var(--kc);font-size:30px;letter-spacing:-.02em}
+.kpi span::before{margin-right:6px}
+.kpis .kpi:nth-child(1){--kc:var(--accent)}.kpis .kpi:nth-child(1) span::before{content:"\u26a1"}
+.kpis .kpi:nth-child(2){--kc:var(--blue)}.kpis .kpi:nth-child(2) span::before{content:"\U0001F4C5"}
+.kpis .kpi:nth-child(3){--kc:var(--amber)}.kpis .kpi:nth-child(3) span::before{content:"\u270d\ufe0f"}
+.kpis .kpi:nth-child(4){--kc:var(--red)}.kpis .kpi:nth-child(4) span::before{content:"\u23f0"}
+.kpis .kpi:nth-child(5){--kc:var(--green)}.kpis .kpi:nth-child(5) span::before{content:"\U0001F4CC"}
+.kpis .kpi:nth-child(6){--kc:var(--red)}.kpis .kpi:nth-child(6) span::before{content:"\u26a0\ufe0f"}
+.kpi b.red{color:var(--red)}
+/* sections */
+section{border:0;border-radius:16px;box-shadow:var(--shadow);padding:18px}
+section h2{color:var(--accent);font-size:14px;display:flex;align-items:center;gap:8px;padding-bottom:10px;
+border-bottom:2px solid var(--accent-soft);margin-bottom:6px}
+section li{border-radius:10px;padding:11px 8px;margin:0 -8px;border-top-color:var(--line)}
+section li:hover{background:var(--accent-soft)}
+.owner{color:var(--accent)}
+/* status pills */
+.flag{font-weight:600;background:var(--chip);color:var(--mute)}
+.flag.Overdue{background:var(--red-soft);color:var(--red)}.flag.Due{background:var(--amber-soft);color:var(--amber)}
+.flag.New{background:var(--blue-soft);color:var(--blue)}.flag.Follow{background:var(--accent-soft);color:var(--accent)}
+.flag.Waiting{background:var(--amber-soft);color:var(--amber)}
+/* item buttons */
+.acts button{background:var(--card)}
+.acts button[data-a=done]:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+.acts button[data-a=wa]{color:#128c4b;border-color:#b2e5c7;background:#effaf3}
+.acts button[data-a=wa]:hover{background:#dcf5e6;border-color:#25d366;color:#0b6e3a}
+.acts button[data-a=mail]{color:var(--blue);border-color:var(--blue-soft);background:var(--blue-soft)}
+:root[data-theme=midnight] .acts button[data-a=wa]{background:#14301f;border-color:#1f5c37;color:#7ee2a8}
+.act-form .go,.fwd .go{background:var(--accent);border-color:var(--accent);color:#fff}
+.pop-in{border:0;box-shadow:0 18px 40px -10px rgba(16,24,40,.35)}
+a{color:var(--accent)}
+"""
+
+THEME_BOOT = ("<script>try{document.documentElement.dataset.theme=localStorage.getItem('sb-theme')||'%s';}"
+              "catch(e){document.documentElement.dataset.theme='%s';}</script>" % (DEFAULT_THEME, DEFAULT_THEME))
+
+THEME_JS = """
+(function(){
+  var btns=[].slice.call(document.querySelectorAll('.theme-pick button'));
+  function mark(){var t=document.documentElement.dataset.theme;btns.forEach(function(b){b.classList.toggle('on',b.dataset.theme===t);});}
+  btns.forEach(function(b){b.addEventListener('click',function(){document.documentElement.dataset.theme=b.dataset.theme;
+    try{localStorage.setItem('sb-theme',b.dataset.theme);}catch(e){}mark();});});
+  mark();
+})();
+"""
+
+
+def _theme_picker() -> str:
+    dots = "".join(f'<button type="button" data-theme="{k}" title="{escape(label)}" aria-label="{escape(label)} theme" '
+                   f'style="background:{sw}"></button>' for k, label, sw in THEMES)
+    return f'<div class="theme-pick"><span>Theme</span>{dots}</div>'
 
 
 def _flag_class(flag: str) -> str:
@@ -424,10 +523,10 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
     profiles_js = json.dumps([{"key": p["key"], "name": p["name"]} for p in profiles.PROFILES]).replace("</", "<\\/")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Second Brain</title><style>{CSS}{sync_status.CSS}{TABS_CSS}</style></head><body><main>
-<header><h1>{greet}, {escape(settings.me_name.split()[0])}</h1>
-<span class="sub">{now:%A, %d %b %Y} · {clock(now)}</span></header>
-{sync_status.html_box(sync, now) if sync is not None else ""}
+<title>Second Brain</title>{THEME_BOOT}<style>{CSS}{sync_status.CSS}{TABS_CSS}{THEME_CSS}</style></head><body><main>
+<div class="hero"><header><div><h1>{greet}, {escape(settings.me_name.split()[0])}</h1>
+<span class="sub">{now:%A, %d %b %Y} · {clock(now)}</span></div>{_theme_picker()}</header>
+{sync_status.html_box(sync, now) if sync is not None else ""}</div>
 <nav class="tabs" aria-label="Profiles">{"".join(tabs)}</nav>
 <div class="kpis">
 {_kpi("Act today", _per_profile(act, lambda a: _pk(a.profile)), items=act_items)}
@@ -438,12 +537,12 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
 {_kpi("Open high risks", _per_profile(high, row_pk), alert=True, items=hr_items)}
 </div>
 <div class="grid">
-<section><h2>Act today</h2>{_actions(act, "Nothing urgent. Clear runway.")}</section>
-<section><h2>Waiting on me</h2>{_actions(waiting, "Nobody is waiting on you.")}</section>
-<section><h2>Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
-<section><h2>This week's meetings</h2>{_meetings(store, meetings, now)}</section>
-<section class="wide"><h2>Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
-</div></main><script>{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js)}</script></body></html>"""
+<section><h2>\u26a1 Act today</h2>{_actions(act, "Nothing urgent. Clear runway.")}</section>
+<section><h2>\u270b Waiting on me</h2>{_actions(waiting, "Nobody is waiting on you.")}</section>
+<section><h2>\u23f0 Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
+<section><h2>\U0001F4C5 This week's meetings</h2>{_meetings(store, meetings, now)}</section>
+<section class="wide"><h2>\U0001F4AC Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
+</div></main><script>{THEME_JS}{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js)}</script></body></html>"""
 
 
 def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:
