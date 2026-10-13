@@ -1,0 +1,23 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+secrets/
+credentials.json
+token.json
+
+# Generated data (contains business email content)
+data/
+output/
+*.xlsx
+~$*.xlsx
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Cloud-mode data worktree (its own branch)
+.brain-data/
