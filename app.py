@@ -20,7 +20,30 @@ from pathlib import Path
 
 from flask import Flask, Response, abort, request, send_file
 
+# The platform mounts the app under a sub-path (e.g. /p/second-brain) and sets
+# SCRIPT_NAME, but its proxy strips that prefix before forwarding. gunicorn
+# then rejects every request ("does not start with SCRIPT_NAME"). Take the
+# prefix out of the environment and use it only for building links.
+PREFIX = os.environ.pop("SCRIPT_NAME", "").rstrip("/")
+
 app = Flask(__name__)
+
+
+class _Prefix:
+    """Accept paths with or without the mount prefix."""
+
+    def __init__(self, wsgi):
+        self.wsgi = wsgi
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if PREFIX and path.startswith(PREFIX):
+            environ["PATH_INFO"] = path[len(PREFIX):] or "/"
+        environ["SCRIPT_NAME"] = PREFIX
+        return self.wsgi(environ, start_response)
+
+
+app.wsgi_app = _Prefix(app.wsgi_app)
 STORE = Path(os.environ.get("STORE_DIR", "published"))
 STORE.mkdir(parents=True, exist_ok=True)
 FILES = {
@@ -65,7 +88,8 @@ def dashboard():
                 "uploads it.</p>")
     html = path.read_text(encoding="utf-8")
     links = ('<div style="max-width:1180px;margin:0 auto;padding:12px 16px 0;font:14px system-ui">'
-             '<a href="/excel">Download Excel</a> · <a href="/summary">WhatsApp summary</a></div>')
+             f'<a href="{PREFIX}/excel">Download Excel</a> · '
+             f'<a href="{PREFIX}/summary">WhatsApp summary</a></div>')
     return html.replace("<main>", links + "<main>", 1)
 
 
