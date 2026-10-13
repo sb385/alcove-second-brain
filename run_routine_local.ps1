@@ -50,3 +50,6 @@ if ($model) { $cliArgs += @("--model", $model.Trim()) }
 Log "claude: $claude model: $model"
 & $claude @cliArgs *>&1 | Out-File $log -Append -Encoding utf8
 Log "===== end (exit $LASTEXITCODE) ====="
+
+# Upload the fresh dashboard + Excel to the hosted website (app.py), if configured.
+python -m secondbrain.publish *>&1 | Out-File $log -Append -Encoding utf8

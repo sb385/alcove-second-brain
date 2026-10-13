@@ -24,3 +24,6 @@ venv/
 
 # Per-run working files (contain business data)
 .run/
+
+# Hosted app's uploaded files
+published/
