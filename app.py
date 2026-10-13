@@ -132,8 +132,10 @@ def no_cache_no_index(resp):
 def dashboard():
     path = STORE / FILES["dashboard"]
     if not path.exists():
-        return ("<h2>No dashboard yet</h2><p>It appears after the next 8:00 run on the PC "
-                "uploads it.</p>")
+        return ('<meta http-equiv="refresh" content="60"><div style="font:16px system-ui;max-width:520px;'
+                'margin:80px auto;padding:0 16px;text-align:center"><h2>Refreshing the dashboard…</h2>'
+                '<p>The site was just updated. Your dashboard will be back within a few minutes; '
+                'this page reloads by itself.</p></div>')
     html = path.read_text(encoding="utf-8")
     links = ('<div style="max-width:1180px;margin:0 auto;padding:12px 16px 0;font:14px system-ui">'
              f'<a href="{PREFIX}/excel">Download Excel</a> · '
@@ -205,6 +207,15 @@ def item_action():
     with ACTIONS.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec) + "\n")
     return rec
+
+
+@app.get("/api/status")
+def status():
+    """For the PC's 10-minute check: is there a dashboard to show? (token required)"""
+    sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not _check_token(sent):
+        abort(401)
+    return {"dashboard": (STORE / FILES["dashboard"]).exists()}
 
 
 @app.get("/api/actions")

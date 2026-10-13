@@ -37,6 +37,16 @@ def main() -> int:
     }
     headers = {"Authorization": f"Bearer {token}"}
 
+    # --if-empty: only upload when a redeploy has wiped the site (10-minute check).
+    if "--if-empty" in sys.argv:
+        try:
+            st = requests.get(f"{url}/api/status", headers=headers, timeout=20)
+        except requests.RequestException:
+            return 0
+        if not st.ok or st.json().get("dashboard"):
+            return 0
+        print("[publish] site was empty after a redeploy; refilling")
+
     # A password changed on the website lives only on the server, and redeploys
     # wipe it. Keep a copy (hash only) here and hand it back if it's missing.
     backup = settings.data_dir / "web_auth_override.json"
