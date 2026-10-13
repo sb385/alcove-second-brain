@@ -25,6 +25,7 @@ from .insights import top_items
 from .models import Extraction
 from .sources import SourceItem
 from .store import Store
+from . import sync_status
 
 
 class SourceRef(BaseModel):
@@ -130,12 +131,18 @@ def cmd_render(a) -> None:
     now = _now()
     store = Store()
     meetings = _meetings(a.meetings)
-    html = dashboard.write(store, now, meetings)
+    sync = sync_status.merge_run()
+    html = dashboard.write(store, now, meetings, sync)
     md_path = settings.dashboard_html.with_suffix(".md")
-    md_path.write_text(dashboard.render_markdown(store, now, meetings), encoding="utf-8")
+    md_path.write_text(dashboard.render_markdown(store, now, meetings, sync), encoding="utf-8")
     summary = notify.compose(top_items(store, now), now, meetings)
     (settings.dashboard_html.parent / "whatsapp_summary.txt").write_text(summary, encoding="utf-8")
     print(f"dashboard html: {html}\ndashboard markdown: {md_path}\n\n--- WhatsApp summary ---\n{summary}")
+
+
+def cmd_sync_status(a) -> None:
+    sync_status.record(a.source, a.status, a.read, a.used, a.note or "", _now())
+    print(f"recorded {a.source}: {a.status}")
 
 
 def main() -> None:
@@ -149,6 +156,13 @@ def main() -> None:
     m = sub.add_parser("merge")
     m.add_argument("file")
     m.set_defaults(fn=cmd_merge)
+    s = sub.add_parser("sync-status", help="record one source's result for the dashboard box")
+    s.add_argument("--source", required=True, choices=list(sync_status.SOURCES))
+    s.add_argument("--status", required=True, choices=["ok", "failed", "skipped"])
+    s.add_argument("--read", type=int, help="items read from the source")
+    s.add_argument("--used", type=int, help="items that had business content")
+    s.add_argument("--note", help="one short line, e.g. the error or what was skipped")
+    s.set_defaults(fn=cmd_sync_status)
     r = sub.add_parser("render")
     r.add_argument("--meetings")
     r.set_defaults(fn=cmd_render)

@@ -7,19 +7,20 @@ from html import escape
 from .config import settings
 from .insights import Action, act_today, meeting_prep, overdue_by_owner, waiting_on_me
 from .store import OPEN_APPROVAL, OPEN_COMMITMENT, Store
+from . import sync_status
 
 CSS = """
 :root{--bg:#f6f5f2;--card:#fff;--ink:#1d2430;--mute:#6b7280;--line:#e5e2dc;
 --accent:#1f3a5f;--red:#b42318;--amber:#b54708;--green:#067647;--chip:#eef1f5}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e23;--ink:#e8eaed;
 --mute:#9aa1ab;--line:#2b2f36;--accent:#8fb3e0;--red:#f97066;--amber:#fdb022;--green:#47cd89;--chip:#252a31}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+*{box-sizing:border-box}html,body{overflow-x:hidden}body{margin:0;background:var(--bg);color:var(--ink);
 font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}
 header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px}
 h1{font-size:22px;margin:0}h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;
 letter-spacing:.06em;color:var(--mute)}.sub{color:var(--mute);font-size:13px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:12px;margin:20px 0}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
 .kpi b{display:block;font-size:26px}.kpi span{color:var(--mute);font-size:13px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:820px){.grid{grid-template-columns:1fr}}
@@ -98,7 +99,7 @@ def _meetings(store: Store, meetings, now: datetime) -> str:
     return "".join(out)
 
 
-def render(store: Store, now: datetime, meetings=None) -> str:
+def render(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:
     today = now.date()
     act = act_today(store, now)
     waiting = waiting_on_me(store, today)
@@ -124,9 +125,10 @@ def render(store: Store, now: datetime, meetings=None) -> str:
 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Second Brain</title><style>{CSS}</style></head><body><main>
-<header><h1>Good morning, {escape(settings.me_name.split()[0])}</h1>
+<title>Second Brain</title><style>{CSS}{sync_status.CSS}</style></head><body><main>
+<header><h1>{"Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"}, {escape(settings.me_name.split()[0])}</h1>
 <span class="sub">{now:%A, %d %b %Y · %H:%M} {escape(settings.tz.key)}</span></header>
+{sync_status.html_box(sync, now) if sync is not None else ""}
 <div class="kpis">
 <div class="kpi"><b>{len(act)}</b><span>Act today</span></div>
 <div class="kpi"><b>{"–" if meetings is None else sum(1 for m in meetings if m.start.date() == today)}</b><span>Meetings today</span></div>
@@ -143,7 +145,7 @@ def render(store: Store, now: datetime, meetings=None) -> str:
 </div></main></body></html>"""
 
 
-def render_markdown(store: Store, now: datetime, meetings=None) -> str:
+def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:
     """Same four sections as the HTML, as Markdown for the online Claude Doc."""
     today = now.date()
 
@@ -165,6 +167,7 @@ def render_markdown(store: Store, now: datetime, meetings=None) -> str:
     md = [
         f"Updated {now:%A %d %b %Y, %H:%M} {settings.tz.key}",
         "",
+        *(sync_status.markdown_box(sync, now) + [""] if sync is not None else []),
         f"**{len(act)}** act today · **{pending}** approvals waiting · **{n_overdue}** overdue commitments",
         "", "## Act today", *acts(act, "Nothing urgent."),
         "", "## Waiting on me", *acts(waiting, "Nobody is waiting on you."),
@@ -193,8 +196,8 @@ def render_markdown(store: Store, now: datetime, meetings=None) -> str:
     return "\n".join(md)
 
 
-def write(store: Store, now: datetime, meetings=None):
+def write(store: Store, now: datetime, meetings=None, sync: dict | None = None):
     path = settings.dashboard_html
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render(store, now, meetings), encoding="utf-8")
+    path.write_text(render(store, now, meetings, sync), encoding="utf-8")
     return path

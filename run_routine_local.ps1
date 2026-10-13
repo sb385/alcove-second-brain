@@ -17,7 +17,7 @@ $env:DATA_DIR = "data"
 python -m secondbrain.wispr_upload *>&1 | Out-File $log -Append -Encoding utf8
 python -m secondbrain.cloud ledger | Out-File ".run\ledger.json" -Encoding utf8
 python -m secondbrain.cloud schema | Out-File ".run\schema.json" -Encoding utf8
-Remove-Item ".run\run.json", ".run\meetings.json" -ErrorAction SilentlyContinue
+Remove-Item ".run\run.json", ".run\meetings.json", ".run\sync_status.json" -ErrorAction SilentlyContinue
 
 $prompt = @"
 Run today's second-brain update on this PC. Follow ROUTINE.md in the current folder, with

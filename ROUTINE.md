@@ -25,6 +25,17 @@ python -m secondbrain.cloud schema > .run/schema.json
 (Set the `ME_*` shell variables from the routine prompt first.) Read `.run/ledger.json` (open
 commitments and pending approvals with IDs, known projects, people with phones) and `.run/schema.json`.
 
+## Recording sync status (after each of steps 2 to 5)
+The dashboard has a "Data sync" box with one card per source. As soon as you finish (or give up
+on) a source, record its result:
+```bash
+python -m secondbrain.cloud sync-status --source <gmail|calendar|whatsapp|wispr> --status <ok|failed|skipped> --read <items read> --used <items with business content> --note "<one short line, optional>"
+```
+- `--read`: threads, events, chats or recordings you looked at. `--used`: how many fed the extraction.
+- If a connector errors or times out, use `--status failed` with the error in `--note`, and move on.
+- Keep the note short and factual, e.g. "voice notes not readable" or "connector timed out".
+  Never put message content in it.
+
 ## 2. Gmail
 Search with `newer_than:1d -category:promotions -category:social`, and also `in:sent newer_than:1d`
 (the CEO's own replies are where they promise and approve things). Open each relevant thread.
