@@ -16,7 +16,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
+from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 
@@ -137,7 +139,82 @@ def dashboard():
              f'<a href="{PREFIX}/excel">Download Excel</a> · '
              f'<a href="{PREFIX}/summary">WhatsApp summary</a> · '
              f'<a href="{PREFIX}/change-password">Change password</a></div>')
+    # Clicks made since the last sync, so the page shows them until the PC applies them.
+    boot = json.dumps({"base": PREFIX, "pending": _read_actions()}).replace("</", "<\\/")
+    html = html.replace("<body>", f"<body><script>window.SB={boot};</script>", 1)
     return html.replace("<main>", links + "<main>", 1)
+
+
+# ---------- item actions (Close / Follow up / Move / Shift) ----------
+# Clicks are queued here; the PC pulls them on every sync/publish, applies them
+# to the Excel, then acknowledges them. Redeploys wipe STORE, so the PC also
+# pulls them before every push (scripts/pre-push).
+ACTIONS = STORE / "actions.jsonl"
+ACTION_KINDS = {"done", "followup", "move", "shift"}
+ITEM_RE = re.compile(r"^[CAR]-\d{1,6}$")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+try:
+    from secondbrain.profiles import NAMES as PROFILE_NAMES
+except Exception:  # keep the web app running even if the package moves
+    PROFILE_NAMES = ()
+
+
+def _read_actions() -> list[dict]:
+    if not ACTIONS.exists():
+        return []
+    out = []
+    for line in ACTIONS.read_text(encoding="utf-8").splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+@app.post("/api/item-action")
+@login_required
+def item_action():
+    # A custom header can't be sent cross-site without CORS, which this app never
+    # allows, so other websites can't trigger actions through a saved login.
+    if request.headers.get("X-Second-Brain") != "1":
+        abort(403)
+    d = request.get_json(silent=True) or {}
+    item, kind, value = str(d.get("item", "")), str(d.get("action", "")), str(d.get("value", ""))
+    if kind not in ACTION_KINDS or not ITEM_RE.match(item):
+        abort(400)
+    if kind in ("followup", "shift") and not DATE_RE.match(value):
+        abort(400)
+    if kind == "move" and value not in PROFILE_NAMES:
+        abort(400)
+    if kind == "shift" and item.startswith("R"):
+        abort(400)  # risks have no due date
+    rec = {"uid": secrets.token_hex(8), "item": item, "action": kind,
+           "value": value if kind != "done" else "",
+           "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    with ACTIONS.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec) + "\n")
+    return rec
+
+
+@app.get("/api/actions")
+def actions_list():
+    sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not _check_token(sent):
+        abort(401)
+    return {"actions": _read_actions()}
+
+
+@app.post("/api/actions/ack")
+def actions_ack():
+    sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not _check_token(sent):
+        abort(401)
+    done = set((request.get_json(silent=True) or {}).get("uids", []))
+    keep = [a for a in _read_actions() if a["uid"] not in done]
+    tmp = ACTIONS.with_suffix(".tmp")
+    tmp.write_text("".join(json.dumps(a) + "\n" for a in keep), encoding="utf-8")
+    tmp.replace(ACTIONS)
+    return {"remaining": len(keep)}
 
 
 @app.get("/excel")

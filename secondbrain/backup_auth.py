@@ -31,6 +31,9 @@ def main() -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(r.text, encoding="utf-8")
         print("[backup-auth] website password backed up")
+    # Dashboard clicks queued on the site would also be wiped: apply them now.
+    from . import web_actions
+    web_actions.sync()
     return 0
 
 

@@ -56,7 +56,7 @@ def _actions(items: list[Action], empty: str) -> str:
         link = f' · <a href="{escape(a.link)}" target="_blank">source</a>' if a.link else ""
         meta = " · ".join(x for x in [a.kind, a.who, a.project, f"due {a.due}" if a.due else ""] if x)
         lis.append(
-            f'<li data-p="{_pk(a.profile)}"><div class="row"><div class="t">{escape(a.text)}</div>'
+            f'<li data-p="{_pk(a.profile)}" data-id="{escape(a.id)}"><div class="row"><div class="t">{escape(a.text)}</div>'
             f'<span class="flag {_flag_class(a.flag)}">{escape(a.flag)}</span></div>'
             f'<div class="m">{escape(a.id)} · {escape(meta)}{link}</div></li>'
         )
@@ -145,15 +145,83 @@ padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
 max-height:min(380px,60vh);overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.18)}
 .pop-h{font-weight:600;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
 .pop li{padding:7px 0}.pt{font-size:14px;font-weight:500;overflow-wrap:anywhere}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.acts button,.act-form button{font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);
+background:var(--card);color:var(--ink);cursor:pointer}
+.acts button:hover,.act-form button:hover{border-color:var(--accent);color:var(--accent)}
+.act-form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:7px;font-size:13px}
+.act-form select,.act-form input{font:inherit;font-size:13px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;
+background:var(--card);color:var(--ink)}
+.act-form .go{background:var(--accent);border-color:var(--accent);color:var(--card)}
+li.closed{opacity:.35;text-decoration:line-through;transition:opacity .5s}
+.chip-note{color:var(--accent);font-weight:600}.flag.Follow{color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+padding:9px 16px;border-radius:8px;font-size:14px;z-index:60;max-width:calc(100vw - 32px)}
+"""
+
+ACTIONS_JS = """
+(function(){
+  var SB=window.SB||{}, base=SB.base||'', PROFS=__PROFILES__;
+  function iso(d){var z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10);}
+  function plus(n){var d=new Date();d.setDate(d.getDate()+n);return iso(d);}
+  function nice(v){var d=new Date(v+'T00:00:00');return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
+  var tt;function toast(msg){var t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}
+    t.textContent=msg;t.hidden=false;clearTimeout(tt);tt=setTimeout(function(){t.hidden=true;},3500);}
+  function note(li,text){var m=li.querySelector('.m');if(!m)return;var c=li.querySelector('.chip-note');
+    if(!c){c=document.createElement('span');c.className='chip-note';m.appendChild(c);}c.textContent=' · '+text;}
+  function effect(id,a,v,quiet){
+    document.querySelectorAll('li[data-id="'+id+'"]').forEach(function(li){
+      if(a==='done'){li.dataset.gone='1';if(quiet){li.hidden=true;}else{li.classList.add('closed');setTimeout(function(){li.hidden=true;},700);}}
+      else if(a==='followup'){note(li,'Follow up '+nice(v));}
+      else if(a==='move'){var p=PROFS.filter(function(x){return x.name===v;})[0];if(p){li.dataset.p=p.key;}note(li,'Moved to '+v);}
+      else if(a==='shift'){note(li,'Due '+nice(v));}
+    });
+    if(window.SBrefresh&&(a==='move'||quiet))window.SBrefresh();
+  }
+  (SB.pending||[]).forEach(function(x){effect(x.item,x.action,x.value,true);});
+  function send(id,a,v,label){
+    return fetch(base+'/api/item-action',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-Second-Brain':'1'},body:JSON.stringify({item:id,action:a,value:v})})
+    .then(function(r){if(!r.ok)throw new Error(r.status);effect(id,a,v,false);toast(label+'. The Excel updates at the next sync.');})
+    .catch(function(){toast('Could not save. Open the dashboard website and try again.');});
+  }
+  function bar(li){
+    var id=li.dataset.id, risk=id.charAt(0)==='R';
+    var b=document.createElement('div');b.className='acts';
+    b.innerHTML='<button data-a="done">\u2713 Close</button><button data-a="followup">\u21bb Follow up</button>'+
+      '<button data-a="move">\u21c4 Move</button>'+(risk?'':'<button data-a="shift">\U0001F4C5 Shift</button>');
+    li.appendChild(b);
+  }
+  document.querySelectorAll('section li[data-id]').forEach(bar);
+  function form(li,html){var f=li.querySelector('.act-form');if(f){f.remove();}f=document.createElement('div');
+    f.className='act-form';f.innerHTML=html+'<button data-cancel>Cancel</button>';li.appendChild(f);return f;}
+  document.addEventListener('click',function(e){
+    var btn=e.target.closest('.acts button, .act-form button');if(!btn)return;
+    var li=btn.closest('li[data-id]'),id=li.dataset.id;
+    if(btn.hasAttribute('data-cancel')){btn.parentNode.remove();return;}
+    if(btn.dataset.when){send(id,'followup',btn.dataset.when,'Follow-up set for '+nice(btn.dataset.when));btn.parentNode.remove();return;}
+    if(btn.dataset.save){var f=btn.parentNode,el=f.querySelector('select,input');if(!el.value)return;
+      var a=btn.dataset.save;send(id,a,el.value,a==='move'?'Moved to '+el.value:a==='shift'?'Due date set to '+nice(el.value):'Follow-up set for '+nice(el.value));f.remove();return;}
+    var a=btn.dataset.a;
+    if(a==='done'){if(confirm('Close this item? It will be marked done and leave the dashboard.'))send(id,'done','','Closed');}
+    else if(a==='followup'){form(li,'Follow up: <button data-when="'+plus(1)+'">Tomorrow</button><button data-when="'+plus(3)+'">In 3 days</button>'+
+      '<button data-when="'+plus(7)+'">Next week</button><input type="date" min="'+plus(0)+'"><button class="go" data-save="followup">Set</button>');}
+    else if(a==='move'){var cur=li.dataset.p;form(li,'Move to: <select>'+PROFS.filter(function(x){return x.key!==cur;}).map(function(x){
+      return '<option>'+x.name+'</option>';}).join('')+'</select><button class="go" data-save="move">Move</button>');}
+    else if(a==='shift'){form(li,'New due date: <input type="date" min="'+plus(0)+'"><button class="go" data-save="shift">Save</button>');}
+  });
+})();
 """
 
 TABS_JS = """
 (function(){
   var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  var cur='all';
   function show(p){
+    cur=p;
     tabs.forEach(function(t){t.classList.toggle('on',t.dataset.tab===p);});
     document.querySelectorAll('[data-p]').forEach(function(el){
-      el.hidden = p!=='all' && el.dataset.p!==p;
+      el.hidden = el.dataset.gone==='1' || (p!=='all' && el.dataset.p!==p);
     });
     document.querySelectorAll('.grp').forEach(function(g){
       g.hidden = !g.querySelector('li:not([hidden])');
@@ -168,6 +236,7 @@ TABS_JS = """
     });
     try{ history.replaceState(null,'',p==='all'?location.pathname+location.search:'#'+p); }catch(e){}
   }
+  window.SBrefresh=function(){show(cur);};
   tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.tab);});});
   var kpis=[].slice.call(document.querySelectorAll('.kpi'));
   function place(k){var p=k.querySelector('.pop'); if(!p) return; p.classList.remove('r');
@@ -261,7 +330,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
         for r in rows:
             link = f' · <a href="{escape(r["Source Link"])}" target="_blank">source</a>' if r.get("Source Link") else ""
             od_html.append(
-                f'<li data-p="{row_pk(r)}"><div class="row"><div class="t">{escape(str(r.get("Item", "")))}</div>'
+                f'<li data-p="{row_pk(r)}" data-id="{escape(r["ID"])}"><div class="row"><div class="t">{escape(str(r.get("Item", "")))}</div>'
                 f'<span class="flag Overdue">{r["_late"]}d late</span></div>'
                 f'<div class="m">{escape(r["ID"])} · due {escape(str(r.get("Due")))}'
                 f'{" · " + escape(str(r["Project"])) if r.get("Project") else ""}{link}</div></li>'
@@ -283,6 +352,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
                           lambda r: _dot(r.get("ID"), r.get("Owner"), f"due {r['Due']}" if r.get("Due") else ""))
     hr_items = _row_items(high, "Risk", lambda r: _dot(r.get("ID"), r.get("Project"), r.get("Owner")))
     greet = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
+    profiles_js = json.dumps([{"key": p["key"], "name": p["name"]} for p in profiles.PROFILES]).replace("</", "<\\/")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Second Brain</title><style>{CSS}{sync_status.CSS}{TABS_CSS}</style></head><body><main>
@@ -304,7 +374,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
 <section><h2>Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
 <section><h2>This week's meetings</h2>{_meetings(store, meetings, now)}</section>
 <section class="wide"><h2>Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
-</div></main><script>{TABS_JS}</script></body></html>"""
+</div></main><script>{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js)}</script></body></html>"""
 
 
 def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:

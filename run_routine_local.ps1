@@ -20,7 +20,9 @@ $win = (python -m secondbrain.sync_status window | Out-String).Trim() | ConvertF
 $sendSummary = ($Summary -or ((Get-Date).Hour -lt 10)) -and -not $NoSummary
 Log "===== start  window: $($win.since_local) -> now  ($($win.hours)h)  summary: $sendSummary ====="
 
-# Deterministic prep: Wispr items into data\wispr, ledger and schema for Claude.
+# Deterministic prep: apply dashboard clicks first (so a closed item isn't
+# treated as open), then Wispr items into data\wispr, ledger and schema for Claude.
+python -m secondbrain.web_actions *>&1 | Out-File $log -Append -Encoding utf8
 python -m secondbrain.wispr_upload *>&1 | Out-File $log -Append -Encoding utf8
 python -m secondbrain.cloud ledger | Out-File ".run\ledger.json" -Encoding utf8
 python -m secondbrain.cloud schema | Out-File ".run\schema.json" -Encoding utf8

@@ -14,6 +14,15 @@ import requests
 from .config import settings
 
 
+def _rerender() -> None:
+    import argparse
+
+    from . import cloud
+    from .config import ROOT
+    meetings = ROOT / ".run" / "meetings.json"
+    cloud.cmd_render(argparse.Namespace(meetings=str(meetings) if meetings.exists() else None))
+
+
 def main() -> int:
     url = os.getenv("PUBLISH_URL", "").rstrip("/")
     token = os.getenv("UPLOAD_TOKEN", "")
@@ -38,6 +47,12 @@ def main() -> int:
         backup.write_text(state.text, encoding="utf-8")
     elif state.ok and backup.exists():
         form["auth_override"] = backup.read_text(encoding="utf-8")
+
+    # Apply dashboard clicks (Close / Follow up / Move / Shift) to the Excel, then
+    # re-render so the uploaded page and Excel both reflect them.
+    from . import web_actions
+    web_actions.sync()
+    _rerender()
 
     files = {k: (p.name, p.open("rb")) for k, p in paths.items() if p.exists()}
     try:

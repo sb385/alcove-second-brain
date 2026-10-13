@@ -51,6 +51,9 @@ SHEETS: dict[str, list[str]] = {
 TAGGED = {"Commitments": "Item", "Decisions": "Decision", "Approvals": "Item", "Risks": "Risk"}
 for _sheet in TAGGED:
     SHEETS[_sheet].insert(SHEETS[_sheet].index("Project"), "Profile")
+# Follow-up date set from the dashboard; the item returns to "Act today" that day.
+for _sheet, _after in (("Commitments", "Due"), ("Approvals", "Due"), ("Risks", "Status")):
+    SHEETS[_sheet].insert(SHEETS[_sheet].index(_after) + 1, "Follow Up")
 ID_PREFIX = {"Commitments": "C", "Decisions": "D", "Approvals": "A", "Risks": "R"}
 
 OPEN_COMMITMENT = {"Open", "Blocked"}

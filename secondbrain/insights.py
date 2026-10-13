@@ -93,7 +93,28 @@ def act_today(store: Store, now: datetime) -> list[Action]:
         a for a in waiting_on_me(store, today)
         if a.flag.startswith(("Overdue", "Due today")) or (a.kind == "Approval" and a.score >= 56)
     ]
-    return sorted(urgent + new_high_risks(store, now), key=lambda a: -a.score)
+    out = {a.id: a for a in urgent + new_high_risks(store, now)}
+    for a in follow_ups_due(store, today):  # a follow-up date always brings the item back
+        out[a.id] = a
+    return sorted(out.values(), key=lambda a: -a.score)
+
+
+def follow_ups_due(store: Store, today: date) -> list[Action]:
+    """Open items whose dashboard follow-up date has arrived."""
+    out = []
+    sheets = (("Commitments", "Item", OPEN_COMMITMENT, "Commitment"),
+              ("Approvals", "Item", OPEN_APPROVAL, "Approval"),
+              ("Risks", "Risk", {"Open"}, "Risk"))
+    for sheet, col, open_states, kind in sheets:
+        for r in store.rows[sheet]:
+            fu = _days(r.get("Follow Up"), today)
+            if fu is None or fu > 0 or r.get("Status", "Open") not in open_states:
+                continue
+            who = r.get("Owner") or r.get("Requested By") or ""
+            flag = "Follow up" if fu == 0 else f"Follow up · {-fu}d ago"
+            out.append(Action(kind, r["ID"], r.get(col, ""), who, r.get("Due"), r.get("Project"),
+                              r.get("Source Link"), 48 + min(-fu * 2, 10), flag, r.get("Profile") or "Other"))
+    return out
 
 
 def overdue_by_owner(store: Store, today: date) -> dict[str, list[dict]]:
