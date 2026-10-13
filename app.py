@@ -13,6 +13,8 @@ Environment variables (set them on the hosting platform):
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import secrets
 from functools import wraps
@@ -59,14 +61,37 @@ def _same(a: str, b: str) -> bool:
     return bool(a) and bool(b) and secrets.compare_digest(a.encode(), b.encode())
 
 
+# The hosting platform has no environment variables, so web_auth.json (in the
+# repo) holds only salted hashes. The real password and token live in the PC's
+# .env. Create/rotate it with: python -m secondbrain.web_auth
+_AUTH_FILE = Path(__file__).with_name("web_auth.json")
+_AUTH = json.loads(_AUTH_FILE.read_text(encoding="utf-8")) if _AUTH_FILE.exists() else {}
+
+
+def _check_password(given: str) -> bool:
+    if os.environ.get("DASHBOARD_PASSWORD"):
+        return _same(given, os.environ["DASHBOARD_PASSWORD"])
+    rec = _AUTH.get("password")
+    if not rec or not given:
+        return False
+    digest = hashlib.pbkdf2_hmac("sha256", given.encode(), bytes.fromhex(rec["salt"]), rec["iterations"])
+    return secrets.compare_digest(digest.hex(), rec["hash"])
+
+
+def _check_token(given: str) -> bool:
+    if os.environ.get("UPLOAD_TOKEN"):
+        return _same(given, os.environ["UPLOAD_TOKEN"])
+    want = _AUTH.get("upload_token_sha256", "")
+    return bool(want and given) and secrets.compare_digest(hashlib.sha256(given.encode()).hexdigest(), want)
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
-        password = os.environ.get("DASHBOARD_PASSWORD", "")
-        if not password:
-            return Response("Set DASHBOARD_PASSWORD on the server first.", 503)
+        if not (os.environ.get("DASHBOARD_PASSWORD") or _AUTH.get("password")):
+            return fn(*a, **kw)  # no password configured: open (owner's choice for now)
         auth = request.authorization
-        if not auth or not _same(auth.password or "", password):
+        if not auth or not _check_password(auth.password or ""):
             return Response("Login required", 401, {"WWW-Authenticate": 'Basic realm="Second Brain"'})
         return fn(*a, **kw)
     return wrapper
@@ -113,9 +138,8 @@ def summary():
 
 @app.post("/api/upload")
 def upload():
-    token = os.environ.get("UPLOAD_TOKEN", "")
     sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not _same(sent, token):
+    if not _check_token(sent):
         abort(401)
     saved = []
     for field, name in FILES.items():
