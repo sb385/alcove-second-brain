@@ -115,6 +115,11 @@ def fetch(since: datetime) -> list[SourceItem]:
         except (TypeError, ValueError):
             ts = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
 
+        # To-only: skip mail where the CEO is just in Cc/Bcc or a list (their own sent mail stays).
+        to_addrs = {a.lower() for _, a in getaddresses([headers.get("to", "")])}
+        if "SENT" not in msg.get("labelIds", []) and settings.me_emails and not (to_addrs & set(settings.me_emails)):
+            continue
+
         body = _strip_quoted(_extract_body(payload)) or msg.get("snippet", "")
         if len(body) > MAX_BODY_CHARS:
             print(f"[gmail] body of {mid} truncated from {len(body)} chars")

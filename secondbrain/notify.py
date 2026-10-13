@@ -19,7 +19,7 @@ def _meetings_line(meetings, now: datetime) -> str:
     if not today:
         return "\n📅 No meetings today."
     first = today[0]
-    return f"\n📅 {len(today)} meeting{'s' if len(today) > 1 else ''} today · first {first.start:%H:%M} {first.title}"
+    return f"\n📅 {len(today)} meeting{'s' if len(today) > 1 else ''} today · first {first.start.strftime('%I:%M %p').lstrip('0')} {first.title}"
 
 
 def compose(items: list[Action], now: datetime, meetings=None) -> str:

@@ -39,8 +39,15 @@ python -m secondbrain.cloud sync-status --source <gmail|calendar|whatsapp|wispr>
 ## 2. Gmail
 Search with `newer_than:1d -category:promotions -category:social`, and also `in:sent newer_than:1d`
 (the CEO's own replies are where they promise and approve things). Open each relevant thread.
-Skip newsletters, OTPs, receipts and automated notifications unless they show a payment due, a
-deadline or a risk. Source ref: `gmail:<threadId>`, link `https://mail.google.com/mail/u/0/#all/<threadId>`.
+
+**To-only rule (the CEO's instruction):** use an incoming email only if one of `ME_EMAILS` is in
+its **To** header. Skip mail where the CEO is only in **Cc** or **Bcc**, or got it through a group
+or mailing list. The CEO is copied on far too much for Cc mail to be useful. Exceptions: mail the
+CEO **sent**, and a Cc thread where the CEO has replied in the last 24h (they chose to engage).
+Count skipped Cc-only mails in `--read` but not in `--used`.
+
+Also skip newsletters, OTPs, receipts and automated notifications unless they show a payment due,
+a deadline or a risk. Source ref: `gmail:<threadId>`, link `https://mail.google.com/mail/u/0/#all/<threadId>`.
 
 ## 3. Google Calendar
 List events on the primary calendar from 24 hours ago to 7 days ahead.
@@ -70,7 +77,14 @@ PC: summary, notes, to-dos, transcript. Speakers may be unlabelled. Use the refs
 
 ## 6. Extract
 Write `.run/run.json` following `run_file` in the schema: `sources` lists every item you used
-(ref, source, title, link), and `extraction` has these fields:
+(ref, source, title, link, profile, summary), and `extraction` has these fields.
+
+**Profiles (the dashboard tabs).** Every source and every commitment, decision, risk and approval
+gets exactly one `profile`. The list and what belongs where is in `profiles_guide` in
+`.run/ledger.json`. Decide from the content, not only the project name: a Triveni tenant's mail
+is Triveni Mall, a bank sanction letter for the LLP is ADLLP & Group, a family matter is Personal.
+For each mail or WhatsApp chat in `sources`, add a `summary` of under 15 words saying what it's
+about. Never put amounts, passwords, keys or personal details in it.
 - **commitments**: someone promised to do something. A request the CEO accepted is owned by
   `ME_NAME`. Resolve relative dates against the message date (Asia/Kolkata) to YYYY-MM-DD.
 - **commitment_updates / approval_updates**: when an item refers to an open ledger ID, update that

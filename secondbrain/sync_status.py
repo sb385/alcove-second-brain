@@ -59,15 +59,20 @@ def load() -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
+def clock(t: datetime) -> str:
+    """12-hour time like 2:43 PM."""
+    return t.strftime("%I:%M %p").lstrip("0")
+
+
 def _when(iso: str | None, now: datetime) -> str:
     if not iso:
         return "never"
     t = datetime.fromisoformat(iso).astimezone(settings.tz)
     if t.date() == now.date():
-        return f"Today {t:%H:%M}"
+        return f"Today {clock(t)}"
     if t.date() == (now - timedelta(days=1)).date():
-        return f"Yesterday {t:%H:%M}"
-    return f"{t:%d %b %H:%M}"
+        return f"Yesterday {clock(t)}"
+    return f"{t:%d %b} {clock(t)}"
 
 
 def cards(log: dict, now: datetime) -> list[dict]:
@@ -115,7 +120,7 @@ def _last_sync(log: dict) -> str:
     if not runs:
         return "Not synced yet"
     t = datetime.fromisoformat(max(runs)).astimezone(settings.tz)
-    return f"Last sync {t:%d %b %Y, %H:%M}"
+    return f"Last sync {t:%d %b %Y}, {clock(t)}"
 
 
 def html_box(log: dict, now: datetime) -> str:

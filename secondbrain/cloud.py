@@ -22,10 +22,10 @@ from pydantic import BaseModel, ValidationError
 from . import dashboard, notify
 from .config import settings
 from .insights import top_items
-from .models import Extraction
+from .models import Extraction, Profile
 from .sources import SourceItem
 from .store import Store
-from . import sync_status
+from . import profiles, sync_status
 
 
 class SourceRef(BaseModel):
@@ -33,6 +33,8 @@ class SourceRef(BaseModel):
     source: str         # gmail | calendar | whatsapp | wispr
     title: str
     link: Optional[str] = None
+    profile: Profile = "Other"
+    summary: Optional[str] = None  # one line: what this mail/chat is about (no sensitive detail)
 
 
 class RunFile(BaseModel):
@@ -64,6 +66,7 @@ def cmd_schema(_a) -> None:
 def cmd_ledger(_a) -> None:
     store = Store()
     led = store.open_ledger()
+    led["profiles_guide"] = profiles.GUIDE
     led["people"] = [
         {k: p.get(k) for k in ("Name", "Email", "Phone", "Organisation", "Role") if p.get(k)}
         for p in store.rows["People"]
@@ -102,10 +105,36 @@ def cmd_merge(a) -> None:
     stats = store.merge(run.extraction, items, now)
     store.refresh_rollups(now.date())
     path = store.save()
+    _log_sources(run.sources, now)
     archive = settings.data_dir / "runs" / f"{now:%Y-%m-%d}"
     archive.mkdir(parents=True, exist_ok=True)
     (archive / f"run-{now:%H%M}.json").write_text(raw, encoding="utf-8")
     print(f"merged into {path}: {stats}")
+
+
+SOURCES_LOG_DAYS = 7
+
+
+def _log_sources(sources: list[SourceRef], now: datetime) -> None:
+    """Keep a week of mails/chats (title, link, profile) for the dashboard's
+    'Mail & WhatsApp' list. Latest entry per ref wins."""
+    path = settings.data_dir / "sources_log.json"
+    log = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    for s in sources:
+        if s.source in ("gmail", "whatsapp"):
+            log[s.ref] = {**s.model_dump(), "at": now.isoformat()}
+    cutoff = (now - timedelta(days=SOURCES_LOG_DAYS)).isoformat()
+    log = {k: v for k, v in log.items() if v["at"] >= cutoff}
+    path.write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def recent_sources(now: datetime, hours: int = 26) -> list[dict]:
+    path = settings.data_dir / "sources_log.json"
+    if not path.exists():
+        return []
+    cutoff = (now - timedelta(hours=hours)).isoformat()
+    rows = [v for v in json.loads(path.read_text(encoding="utf-8")).values() if v["at"] >= cutoff]
+    return sorted(rows, key=lambda v: (v["source"], v["title"].lower()))
 
 
 def _meetings(path: str | None):
@@ -132,7 +161,8 @@ def cmd_render(a) -> None:
     store = Store()
     meetings = _meetings(a.meetings)
     sync = sync_status.merge_run()
-    html = dashboard.write(store, now, meetings, sync)
+    msgs = recent_sources(now)
+    html = dashboard.write(store, now, meetings, sync, msgs)
     md_path = settings.dashboard_html.with_suffix(".md")
     md_path.write_text(dashboard.render_markdown(store, now, meetings, sync), encoding="utf-8")
     summary = notify.compose(top_items(store, now), now, meetings)

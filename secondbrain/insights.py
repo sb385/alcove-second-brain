@@ -20,6 +20,7 @@ class Action:
     link: str | None
     score: int
     flag: str        # "Overdue", "Due today", "New", ...
+    profile: str = "Other"
 
 
 def is_me(owner, email=None) -> bool:
@@ -55,7 +56,8 @@ def waiting_on_me(store: Store, today: date) -> list[Action]:
         elif dd == 0:
             score, flag = score + 20, "Due today"
         out.append(Action("Approval", r["ID"], r.get("Item", ""), r.get("Requested By", ""),
-                          r.get("Due"), r.get("Project"), r.get("Source Link"), score, flag))
+                          r.get("Due"), r.get("Project"), r.get("Source Link"), score, flag,
+                          r.get("Profile") or "Other"))
     for r in store.rows["Commitments"]:
         if r.get("Status") not in OPEN_COMMITMENT or not is_me(r.get("Owner"), r.get("Owner Email")):
             continue
@@ -68,7 +70,8 @@ def waiting_on_me(store: Store, today: date) -> list[Action]:
         elif dd is not None and dd <= 2:
             score, flag = 25, f"Due in {dd}d"
         out.append(Action("My commitment", r["ID"], r.get("Item", ""), settings.me_name,
-                          r.get("Due"), r.get("Project"), r.get("Source Link"), score, flag))
+                          r.get("Due"), r.get("Project"), r.get("Source Link"), score, flag,
+                          r.get("Profile") or "Other"))
     return sorted(out, key=lambda a: -a.score)
 
 
@@ -76,7 +79,7 @@ def new_high_risks(store: Store, now: datetime) -> list[Action]:
     since = (now - timedelta(hours=settings.lookback_hours + 1)).strftime("%Y-%m-%d %H:%M")
     return [
         Action("Risk", r["ID"], r.get("Risk", ""), r.get("Owner") or "", None, r.get("Project"),
-               r.get("Source Link"), 42, "New · High")
+               r.get("Source Link"), 42, "New · High", r.get("Profile") or "Other")
         for r in store.rows["Risks"]
         if r.get("Status", "Open") == "Open" and r.get("Severity") == "High"
         and str(r.get("First Seen") or "") >= since

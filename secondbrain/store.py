@@ -17,6 +17,7 @@ from openpyxl.utils import get_column_letter
 
 from .config import settings
 from .models import Extraction
+from . import profiles
 from .sources import SourceItem
 
 SHEETS: dict[str, list[str]] = {
@@ -46,6 +47,10 @@ SHEETS: dict[str, list[str]] = {
         "Source", "Source Link", "Evidence", "First Seen", "Last Seen", "Notes",
     ],
 }
+# Sheets whose rows carry a business profile (the dashboard tabs).
+TAGGED = {"Commitments": "Item", "Decisions": "Decision", "Approvals": "Item", "Risks": "Risk"}
+for _sheet in TAGGED:
+    SHEETS[_sheet].insert(SHEETS[_sheet].index("Project"), "Profile")
 ID_PREFIX = {"Commitments": "C", "Decisions": "D", "Approvals": "A", "Risks": "R"}
 
 OPEN_COMMITMENT = {"Open", "Blocked"}
@@ -94,6 +99,11 @@ class Store:
                 if not any(v not in (None, "") for v in r):
                     continue
                 self.rows[name].append({h: _cell(v) for h, v in zip(header, r) if h})
+        # Rows from before profiles existed: tag them from project name / text.
+        for sheet, text_col in TAGGED.items():
+            for row in self.rows[sheet]:
+                if row.get("Profile") not in profiles.NAMES:
+                    row["Profile"] = profiles.guess(row.get("Project"), row.get(text_col))
 
     def save(self) -> Path:
         wb = Workbook()
@@ -155,11 +165,11 @@ class Store:
         """Compact view of open items for Claude to match against."""
         return {
             "open_commitments": [
-                {k: r.get(k) for k in ("ID", "Owner", "Item", "Due", "Status", "Project")}
+                {k: r.get(k) for k in ("ID", "Owner", "Item", "Due", "Status", "Project", "Profile")}
                 for r in self.rows["Commitments"] if r.get("Status") in OPEN_COMMITMENT
             ],
             "pending_approvals": [
-                {k: r.get(k) for k in ("ID", "Item", "Requested By", "Due", "Project")}
+                {k: r.get(k) for k in ("ID", "Item", "Requested By", "Due", "Project", "Profile")}
                 for r in self.rows["Approvals"] if r.get("Status") in OPEN_APPROVAL
             ],
             "known_projects": sorted({r["Project"] for r in self.rows["Projects"] if r.get("Project")}),
@@ -206,7 +216,7 @@ class Store:
             s, link = src(c.source_ref)
             self.rows["Commitments"].append({
                 "ID": self._next_id("Commitments"), "Owner": c.owner, "Owner Email": c.owner_email,
-                "Item": c.item, "Due": c.due, "Status": c.status, "Project": c.project,
+                "Item": c.item, "Due": c.due, "Status": c.status, "Project": c.project, "Profile": c.profile,
                 "Source": s, "Source Link": link, "Evidence": c.evidence,
                 "First Seen": stamp, "Last Updated": stamp,
                 "Done On": now.date().isoformat() if c.status == "Done" else None,
@@ -219,7 +229,7 @@ class Store:
             s, link = src(d.source_ref)
             self.rows["Decisions"].append({
                 "ID": self._next_id("Decisions"), "Decision": d.decision, "Made By": d.made_by,
-                "Date": d.date, "Project": d.project, "Source": s, "Source Link": link,
+                "Date": d.date, "Project": d.project, "Profile": d.profile, "Source": s, "Source Link": link,
                 "Evidence": d.evidence, "First Seen": stamp,
             })
             stats["decisions"] += 1
@@ -234,7 +244,7 @@ class Store:
             s, link = src(rk.source_ref)
             self.rows["Risks"].append({
                 "ID": self._next_id("Risks"), "Risk": rk.risk, "Severity": rk.severity,
-                "Project": rk.project, "Owner": rk.owner, "Status": "Open",
+                "Project": rk.project, "Profile": rk.profile, "Owner": rk.owner, "Status": "Open",
                 "Source": s, "Source Link": link, "Evidence": rk.evidence,
                 "First Seen": stamp, "Last Seen": stamp,
             })
@@ -258,7 +268,7 @@ class Store:
             self.rows["Approvals"].append({
                 "ID": self._next_id("Approvals"), "Item": a.item, "Requested By": a.requested_by,
                 "Requested By Email": a.requested_by_email, "Amount": a.amount, "Due": a.due,
-                "Status": "Pending", "Project": a.project, "Source": s, "Source Link": link,
+                "Status": "Pending", "Project": a.project, "Profile": a.profile, "Source": s, "Source Link": link,
                 "Evidence": a.evidence, "First Seen": stamp, "Last Updated": stamp,
             })
             stats["approvals"] += 1

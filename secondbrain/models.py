@@ -5,6 +5,11 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from .profiles import NAMES
+
+Profile = Literal[NAMES]  # Triveni Mall, Sangam, Sundarban, ADLLP & Group, Caliber, Personal, Other
+_PF = "Business profile this belongs to (exact name from the profile list)."
+
 
 class NewCommitment(BaseModel):
     owner: str = Field(description="Person who promised to do it. Use the CEO's name if it's on them.")
@@ -13,6 +18,7 @@ class NewCommitment(BaseModel):
     due: Optional[str] = Field(description="YYYY-MM-DD, resolved from relative dates; null if none.")
     status: Literal["Open", "Done"]
     project: Optional[str]
+    profile: Profile = Field(description=_PF)
     source_ref: str = Field(description="The ref attribute of the item this came from.")
     evidence: str = Field(description="Short quote proving it.")
 
@@ -30,6 +36,7 @@ class Decision(BaseModel):
     made_by: str
     date: str = Field(description="YYYY-MM-DD")
     project: Optional[str]
+    profile: Profile = Field(description=_PF)
     source_ref: str
     evidence: str
 
@@ -38,6 +45,7 @@ class Risk(BaseModel):
     risk: str
     severity: Literal["High", "Medium", "Low"]
     project: Optional[str]
+    profile: Profile = Field(description=_PF)
     owner: Optional[str]
     source_ref: str
     evidence: str
@@ -50,6 +58,7 @@ class Approval(BaseModel):
     due: Optional[str] = Field(description="YYYY-MM-DD or null")
     amount: Optional[str] = Field(description="Money involved, with currency, if stated.")
     project: Optional[str]
+    profile: Profile = Field(description=_PF)
     source_ref: str
     evidence: str
 

@@ -1,13 +1,15 @@
 """Self-contained HTML dashboard (open output/dashboard.html in any browser)."""
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from html import escape
 
 from .config import settings
 from .insights import Action, act_today, meeting_prep, overdue_by_owner, waiting_on_me
 from .store import OPEN_APPROVAL, OPEN_COMMITMENT, Store
-from . import sync_status
+from . import profiles, sync_status
+from .sync_status import clock
 
 CSS = """
 :root{--bg:#f6f5f2;--card:#fff;--ink:#1d2430;--mute:#6b7280;--line:#e5e2dc;
@@ -42,6 +44,10 @@ def _flag_class(flag: str) -> str:
     return flag.split()[0].replace("·", "")
 
 
+def _pk(profile: str | None) -> str:
+    return profiles.key(profile)
+
+
 def _actions(items: list[Action], empty: str) -> str:
     if not items:
         return f'<p class="empty">{escape(empty)}</p>'
@@ -50,11 +56,19 @@ def _actions(items: list[Action], empty: str) -> str:
         link = f' · <a href="{escape(a.link)}" target="_blank">source</a>' if a.link else ""
         meta = " · ".join(x for x in [a.kind, a.who, a.project, f"due {a.due}" if a.due else ""] if x)
         lis.append(
-            f'<li><div class="row"><div class="t">{escape(a.text)}</div>'
+            f'<li data-p="{_pk(a.profile)}"><div class="row"><div class="t">{escape(a.text)}</div>'
             f'<span class="flag {_flag_class(a.flag)}">{escape(a.flag)}</span></div>'
             f'<div class="m">{escape(a.id)} · {escape(meta)}{link}</div></li>'
         )
-    return "<ul>" + "".join(lis) + "</ul>"
+    return f'<ul>{"".join(lis)}</ul><p class="empty none-here" hidden>{escape(empty)}</p>'
+
+
+def _meeting_profile(store: Store, m) -> str:
+    """Tag a meeting from its title, else from its attendees' open items. "" = All tab only."""
+    name = profiles.guess(m.title, m.location)
+    if name == profiles.OTHER:
+        name = profiles.guess(" ".join(meeting_prep(store, m.others)))
+    return "" if name == profiles.OTHER else _pk(name)
 
 
 def _meetings(store: Store, meetings, now: datetime) -> str:
@@ -66,11 +80,11 @@ def _meetings(store: Store, meetings, now: datetime) -> str:
     for m in meetings:
         if m.start.date() != day:
             if day is not None:
-                out.append("</ul>")
+                out.append("</ul></div>")
             day = m.start.date()
             label = "Today" if day == now.date() else f"{m.start:%A}"
-            out.append(f'<div class="owner">{label} <span class="sub">{m.start:%d %b}</span></div><ul>')
-        when = "All day" if m.all_day else f"{m.start:%H:%M}–{m.end:%H:%M}"
+            out.append(f'<div class="grp"><div class="owner">{label} <span class="sub">{m.start:%d %b}</span></div><ul>')
+        when = "All day" if m.all_day else f"{clock(m.start)}–{clock(m.end)}"
         past = not m.all_day and m.end < now
         who = ", ".join(a.name.split("@")[0] for a in m.others[:4])
         if len(m.others) > 4:
@@ -91,58 +105,148 @@ def _meetings(store: Store, meetings, now: datetime) -> str:
             if prep else ""
         )
         out.append(
-            f'<li class="{"past" if past else ""}"><div class="row"><div class="t">'
+            f'<li data-p="{_meeting_profile(store, m)}" class="{"past" if past else ""}"><div class="row"><div class="t">'
             f'<span class="time">{when}</span> {escape(m.title)}</div>{flag}</div>'
             f'<div class="m">{meta}</div>{prep_html}</li>'
         )
-    out.append("</ul>")
+    out.append("</ul></div>")
+    out.append('<p class="empty none-here" hidden>No meetings for this profile this week.</p>')
     return "".join(out)
 
 
-def render(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:
+def _messages(msgs: list[dict]) -> str:
+    if not msgs:
+        return '<p class="empty">No mail or WhatsApp in the last 24 hours.</p>'
+    lis = []
+    for m in msgs:
+        icon = "✉" if m["source"] == "gmail" else "💬"
+        title = escape(m["title"])
+        if m.get("link"):
+            title = f'<a href="{escape(m["link"])}" target="_blank">{title}</a>'
+        about = f'<div class="m">{escape(m["summary"])}</div>' if m.get("summary") else ""
+        lis.append(f'<li data-p="{_pk(m.get("profile"))}"><div class="t"><span class="ic">{icon}</span> {title}</div>{about}</li>')
+    return (f'<ul>{"".join(lis)}</ul>'
+            '<p class="empty none-here" hidden>No mail or WhatsApp for this profile in the last 24 hours.</p>')
+
+
+TABS_CSS = """
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:14px 0 0;padding-bottom:2px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;
+padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
+.tab .n{color:var(--mute);margin-left:5px;font-size:12px}
+.tab.on{background:var(--accent);border-color:var(--accent);color:var(--card)}.tab.on .n{color:var(--card);opacity:.85}
+.ic{margin-right:2px}
+"""
+
+TABS_JS = """
+(function(){
+  var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  function show(p){
+    tabs.forEach(function(t){t.classList.toggle('on',t.dataset.tab===p);});
+    document.querySelectorAll('[data-p]').forEach(function(el){
+      el.hidden = p!=='all' && el.dataset.p!==p;
+    });
+    document.querySelectorAll('.grp').forEach(function(g){
+      g.hidden = !g.querySelector('li:not([hidden])');
+    });
+    document.querySelectorAll('section').forEach(function(sec){
+      var none=sec.querySelector('.none-here'); if(!none) return;
+      none.hidden = !!sec.querySelector('li:not([hidden])') || !sec.querySelector('li');
+    });
+    document.querySelectorAll('[data-v]').forEach(function(b){
+      var n=JSON.parse(b.dataset.v)[p]||0; b.textContent=n;
+      if(b.dataset.alert){b.classList.toggle('red',n>0);}
+    });
+    try{ history.replaceState(null,'',p==='all'?location.pathname+location.search:'#'+p); }catch(e){}
+  }
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.tab);});});
+  var start=(location.hash||'').slice(1);
+  show(tabs.some(function(t){return t.dataset.tab===start;})?start:'all');
+})();
+"""
+
+
+def _per_profile(rows, key_of) -> dict:
+    """{'all': n, '<profile key>': n, ...} for numbers that change with the tab."""
+    out = {"all": 0, **{p["key"]: 0 for p in profiles.PROFILES}}
+    for r in rows:
+        out["all"] += 1
+        k = key_of(r)
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def _kpi(label: str, counts: dict, alert: bool = False) -> str:
+    n = counts["all"]
+    cls = "red" if alert and n else ""
+    data = escape(json.dumps(counts), quote=True)
+    return (f'<div class="kpi"><b class="{cls}" data-v="{data}"'
+            f'{" data-alert=1" if alert else ""}>{n}</b><span>{escape(label)}</span></div>')
+
+
+def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
+           msgs: list[dict] | None = None) -> str:
     today = now.date()
     act = act_today(store, now)
     waiting = waiting_on_me(store, today)
     overdue = overdue_by_owner(store, today)
-    open_c = sum(1 for r in store.rows["Commitments"] if r.get("Status") in OPEN_COMMITMENT)
-    pending = sum(1 for r in store.rows["Approvals"] if r.get("Status") in OPEN_APPROVAL)
-    high = sum(1 for r in store.rows["Risks"]
-               if r.get("Status", "Open") == "Open" and r.get("Severity") == "High")
-    n_overdue = sum(len(v) for v in overdue.values())
+    row_pk = lambda r: _pk(r.get("Profile"))  # noqa: E731
+    open_c = [r for r in store.rows["Commitments"] if r.get("Status") in OPEN_COMMITMENT]
+    pending = [r for r in store.rows["Approvals"] if r.get("Status") in OPEN_APPROVAL]
+    open_r = [r for r in store.rows["Risks"] if r.get("Status", "Open") == "Open"]
+    high = [r for r in open_r if r.get("Severity") == "High"]
+    od_rows = [r for rows in overdue.values() for r in rows]
+    todays = [m for m in (meetings or []) if m.start.date() == today]
+
+    # Tab badge = open things in that profile (commitments + approvals + open risks).
+    badge = _per_profile(open_c + pending + open_r, row_pk)
+    tabs = ['<button class="tab" data-tab="all">All</button>'] + [
+        f'<button class="tab" data-tab="{p["key"]}">{escape(p["name"])}'
+        f'<span class="n">{badge.get(p["key"], 0)}</span></button>'
+        for p in profiles.PROFILES if p["key"] != "other" or badge.get("other")
+    ]
 
     od_html = []
     for owner, rows in overdue.items():
-        od_html.append(f'<div class="owner">{escape(owner)} <span class="sub">({len(rows)})</span></div><ul>')
+        od_html.append(f'<div class="grp"><div class="owner">{escape(owner)} <span class="sub">({len(rows)})</span></div><ul>')
         for r in rows:
             link = f' · <a href="{escape(r["Source Link"])}" target="_blank">source</a>' if r.get("Source Link") else ""
             od_html.append(
-                f'<li><div class="row"><div class="t">{escape(str(r.get("Item", "")))}</div>'
+                f'<li data-p="{row_pk(r)}"><div class="row"><div class="t">{escape(str(r.get("Item", "")))}</div>'
                 f'<span class="flag Overdue">{r["_late"]}d late</span></div>'
                 f'<div class="m">{escape(r["ID"])} · due {escape(str(r.get("Due")))}'
                 f'{" · " + escape(str(r["Project"])) if r.get("Project") else ""}{link}</div></li>'
             )
-        od_html.append("</ul>")
+        od_html.append("</ul></div>")
+    if od_html:
+        od_html.append('<p class="empty none-here" hidden>Nothing overdue for this profile.</p>')
 
+    meet_kpi = (_kpi("Meetings today", _per_profile(todays, lambda m: _meeting_profile(store, m) or "none"))
+                if meetings is not None else '<div class="kpi"><b>–</b><span>Meetings today</span></div>')
+    greet = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Second Brain</title><style>{CSS}{sync_status.CSS}</style></head><body><main>
-<header><h1>{"Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"}, {escape(settings.me_name.split()[0])}</h1>
-<span class="sub">{now:%A, %d %b %Y · %H:%M} {escape(settings.tz.key)}</span></header>
+<title>Second Brain</title><style>{CSS}{sync_status.CSS}{TABS_CSS}</style></head><body><main>
+<header><h1>{greet}, {escape(settings.me_name.split()[0])}</h1>
+<span class="sub">{now:%A, %d %b %Y} · {clock(now)}</span></header>
 {sync_status.html_box(sync, now) if sync is not None else ""}
+<nav class="tabs" aria-label="Profiles">{"".join(tabs)}</nav>
 <div class="kpis">
-<div class="kpi"><b>{len(act)}</b><span>Act today</span></div>
-<div class="kpi"><b>{"–" if meetings is None else sum(1 for m in meetings if m.start.date() == today)}</b><span>Meetings today</span></div>
-<div class="kpi"><b>{pending}</b><span>Approvals waiting on you</span></div>
-<div class="kpi"><b class="{'red' if n_overdue else ''}">{n_overdue}</b><span>Overdue commitments</span></div>
-<div class="kpi"><b>{open_c}</b><span>Open commitments</span></div>
-<div class="kpi"><b class="{'red' if high else ''}">{high}</b><span>Open high risks</span></div>
+{_kpi("Act today", _per_profile(act, lambda a: _pk(a.profile)))}
+{meet_kpi}
+{_kpi("Approvals waiting on you", _per_profile(pending, row_pk))}
+{_kpi("Overdue commitments", _per_profile(od_rows, row_pk), alert=True)}
+{_kpi("Open commitments", _per_profile(open_c, row_pk))}
+{_kpi("Open high risks", _per_profile(high, row_pk), alert=True)}
 </div>
 <div class="grid">
 <section><h2>Act today</h2>{_actions(act, "Nothing urgent. Clear runway.")}</section>
 <section><h2>Waiting on me</h2>{_actions(waiting, "Nobody is waiting on you.")}</section>
 <section><h2>Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
 <section><h2>This week's meetings</h2>{_meetings(store, meetings, now)}</section>
-</div></main></body></html>"""
+<section class="wide"><h2>Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
+</div></main><script>{TABS_JS}</script></body></html>"""
 
 
 def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:
@@ -165,7 +269,7 @@ def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | Non
     pending = sum(1 for r in store.rows["Approvals"] if r.get("Status") in OPEN_APPROVAL)
     n_overdue = sum(len(v) for v in overdue.values())
     md = [
-        f"Updated {now:%A %d %b %Y, %H:%M} {settings.tz.key}",
+        f"Updated {now:%A %d %b %Y}, {clock(now)}",
         "",
         *(sync_status.markdown_box(sync, now) + [""] if sync is not None else []),
         f"**{len(act)}** act today · **{pending}** approvals waiting · **{n_overdue}** overdue commitments",
@@ -188,7 +292,7 @@ def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | Non
         if m.start.date() != day:
             day = m.start.date()
             md.append(f"**{'Today' if day == today else f'{m.start:%A}'} {m.start:%d %b}**")
-        when = "All day" if m.all_day else f"{m.start:%H:%M}–{m.end:%H:%M}"
+        when = "All day" if m.all_day else f"{clock(m.start)}–{clock(m.end)}"
         who = ", ".join(a.name for a in m.others[:4]) + (f" +{len(m.others) - 4}" if len(m.others) > 4 else "")
         flag = " · ⚠ not responded" if m.my_response == "needsAction" else ""
         md.append(f"- {when} **{m.title}**{' · ' + who if who else ''}{flag}")
@@ -196,8 +300,9 @@ def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | Non
     return "\n".join(md)
 
 
-def write(store: Store, now: datetime, meetings=None, sync: dict | None = None):
+def write(store: Store, now: datetime, meetings=None, sync: dict | None = None,
+          msgs: list[dict] | None = None):
     path = settings.dashboard_html
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render(store, now, meetings, sync), encoding="utf-8")
+    path.write_text(render(store, now, meetings, sync, msgs), encoding="utf-8")
     return path
