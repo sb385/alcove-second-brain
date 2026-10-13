@@ -54,6 +54,8 @@ for _sheet in TAGGED:
 # Follow-up date set from the dashboard; the item returns to "Act today" that day.
 for _sheet, _after in (("Commitments", "Due"), ("Approvals", "Due"), ("Risks", "Status")):
     SHEETS[_sheet].insert(SHEETS[_sheet].index(_after) + 1, "Follow Up")
+    # Who the CEO last pushed this to (WhatsApp/email from the dashboard), and when.
+    SHEETS[_sheet][SHEETS[_sheet].index("Follow Up") + 1:SHEETS[_sheet].index("Follow Up") + 1] = ["Pushed To", "Pushed On"]
 ID_PREFIX = {"Commitments": "C", "Decisions": "D", "Approvals": "A", "Risks": "R"}
 
 OPEN_COMMITMENT = {"Open", "Blocked"}

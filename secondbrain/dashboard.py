@@ -254,6 +254,14 @@ background:var(--card);color:var(--ink)}
 .act-form .go{background:var(--accent);border-color:var(--accent);color:var(--card)}
 li.closed{opacity:.35;text-decoration:line-through;transition:opacity .5s}
 .fwd{display:flex;flex-direction:column;gap:6px;width:100%}
+.person{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:10px 0}
+.person-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.person-h .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+background:var(--accent-soft,#e7edf6);color:var(--accent)}
+.person-h .cnt{color:var(--mute);font-size:13px}
+.person-h .remind{margin-left:auto;font:inherit;font-size:12px;padding:4px 11px;border-radius:999px;cursor:pointer;
+color:#128c4b;border:1px solid #b2e5c7;background:#effaf3}
+#team .person ul{margin-top:4px}
 .fwd label{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.fwd .to{flex:1;min-width:160px}
 .fwd textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
 background:var(--card);color:var(--ink);width:100%;resize:vertical}
@@ -265,7 +273,7 @@ padding:9px 16px;border-radius:8px;font-size:14px;z-index:60;max-width:calc(100v
 
 ACTIONS_JS = """
 (function(){
-  var SB=window.SB||{}, base=SB.base||'', PROFS=__PROFILES__, CONTACTS=__CONTACTS__;
+  var SB=window.SB||{}, base=SB.base||'', PROFS=__PROFILES__, CONTACTS=__CONTACTS__, TEAM=__TEAM__;
   function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   // Contact pickers (shared <datalist>s): type a name, pick from the list.
   (function(){var w=document.createElement('datalist');w.id='sb-wa';var m=document.createElement('datalist');m.id='sb-mail';
@@ -296,7 +304,51 @@ ACTIONS_JS = """
     });
     if(window.SBrefresh&&(a==='move'||quiet))window.SBrefresh();
   }
+  function today(){return iso(new Date());}
+  function ago(d){if(!d)return '';var n=Math.round((new Date(today())-new Date(d))/864e5);
+    return n<=0?'sent today':n===1?'sent yesterday':'sent '+n+' days ago';}
+  function renderTeam(){
+    var box=document.getElementById('team');if(!box)return;
+    var by={};TEAM.forEach(function(x){(by[x.to]=by[x.to]||[]).push(x);});
+    var names=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length||a.localeCompare(b);});
+    if(!names.length){box.innerHTML='<p class="empty">Nothing pushed to anyone yet. Use \U0001F4AC WhatsApp or \u2709 Email on an item and it shows up here under that person.</p>';return;}
+    box.innerHTML=names.map(function(n){
+      var items=by[n].slice().sort(function(a,b){return (a.on||'').localeCompare(b.on||'');});
+      var c=findContact(n,'p');
+      return '<div class="grp person"><div class="person-h"><span class="avatar">'+esc(n.charAt(0).toUpperCase())+'</span>'+
+        '<b>'+esc(n)+'</b><span class="cnt">'+items.length+' pending</span>'+
+        (c?'<button class="remind" data-to="'+esc(n)+'">\U0001F4AC Remind all</button>':'')+'</div><ul>'+
+        items.map(function(x){var old=x.on&&(new Date(today())-new Date(x.on))/864e5>=3;
+          return '<li data-p="'+x.p+'" data-id="'+esc(x.id)+'"><div class="row"><div class="t">'+esc(x.t)+'</div>'+
+            '<span class="flag '+(old?'Overdue':'Follow')+'">'+esc(ago(x.on))+'</span></div><div class="m">'+esc(x.m)+'</div></li>';}).join('')+
+        '</ul></div>';}).join('')+'<p class="empty none-here" hidden>Nothing pending with the team for this profile.</p>';
+    box.querySelectorAll('li[data-id]').forEach(function(li){if(!li.querySelector('.acts'))bar(li);});
+    if(window.SBrefresh)window.SBrefresh();
+  }
+  function addTeam(id,who){
+    var src=document.querySelector('section:not(.team) li[data-id="'+id+'"]');
+    var have=TEAM.filter(function(x){return x.id===id;})[0];
+    if(have){if(have.to!==who){have.to=who;have.on=today();}}
+    else if(src){TEAM.push({id:id,t:(src.querySelector('.t')||{}).textContent||id,
+      m:((src.querySelector('.m')||{}).textContent||'').split(' \u00b7 source')[0],p:src.dataset.p,to:who,on:today()});}
+    renderTeam();
+  }
+  var _effect=effect;
+  effect=function(id,a,v,quiet){
+    if(a==='nudge'&&v.indexOf(' to ')>0){addTeam(id,v.split(' to ').slice(1).join(' to ').trim());return;}
+    if(a==='done'){TEAM=TEAM.filter(function(x){return x.id!==id;});setTimeout(renderTeam,quiet?0:750);}
+    _effect(id,a,v,quiet);
+  };
   (SB.pending||[]).forEach(function(x){effect(x.item,x.action,x.value,true);});
+  document.addEventListener('click',function(e){
+    var r=e.target.closest('button.remind');if(!r)return;
+    var n=r.dataset.to,c=findContact(n,'p');if(!c)return;
+    var items=TEAM.filter(function(x){return x.to===n;});
+    var text='Hi '+n.split(' ')[0]+', a quick reminder on these pending items. Please update me:'+
+      items.map(function(x,i){return '\\n'+(i+1)+'. '+x.t+' ('+x.id+')';}).join('');
+    window.open('https://wa.me/'+c.p+'?text='+encodeURIComponent(text),'_blank','noopener');
+    items.forEach(function(x){send(x.id,'nudge','reminder on WhatsApp to '+n,'Reminder opened for '+n);});
+  });
   function send(id,a,v,label){
     return fetch(base+'/api/item-action',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-Second-Brain':'1'},body:JSON.stringify({item:id,action:a,value:v})})
@@ -304,6 +356,7 @@ ACTIONS_JS = """
     .catch(function(){toast('Could not save. Open the dashboard website and try again.');});
   }
   function bar(li){
+    if(li.querySelector('.acts'))return;
     var id=li.dataset.id, risk=id.charAt(0)==='R';
     var b=document.createElement('div');b.className='acts';
     b.innerHTML='<button data-a="done">\u2713 Close</button><button data-a="followup">\u21bb Follow up</button>'+
@@ -312,6 +365,7 @@ ACTIONS_JS = """
     li.appendChild(b);
   }
   document.querySelectorAll('section li[data-id]').forEach(bar);
+  setTimeout(renderTeam,0);
   function form(li,html){var f=li.querySelector('.act-form');if(f){f.remove();}f=document.createElement('div');
     f.className='act-form';f.innerHTML=html+'<button data-cancel>Cancel</button>';li.appendChild(f);return f;}
   function forward(li,f,kind){
@@ -425,6 +479,22 @@ def _contacts(store: Store) -> list[dict]:
     return sorted(out, key=lambda c: (pin(c), c["n"].lower()))
 
 
+def _team(store: Store) -> list[dict]:
+    """Open items the CEO pushed to someone (WhatsApp/email from the dashboard)."""
+    out = []
+    sheets = (("Commitments", "Item", OPEN_COMMITMENT, "Commitment"),
+              ("Approvals", "Item", OPEN_APPROVAL, "Approval"),
+              ("Risks", "Risk", {"Open"}, "Risk"))
+    for sheet, col, open_states, kind in sheets:
+        for r in store.rows[sheet]:
+            if r.get("Pushed To") and r.get("Status", "Open") in open_states:
+                meta = " \u00b7 ".join(str(x) for x in (r["ID"], kind, r.get("Project"),
+                                                          f"due {r['Due']}" if r.get("Due") else "") if x)
+                out.append({"id": r["ID"], "t": str(r.get(col) or ""), "m": meta, "p": _pk(r.get("Profile")),
+                            "to": str(r["Pushed To"]), "on": str(r.get("Pushed On") or "")[:10]})
+    return out
+
+
 def _per_profile(rows, key_of) -> dict:
     """{'all': n, '<profile key>': n, ...} for numbers that change with the tab."""
     out = {"all": 0, **{p["key"]: 0 for p in profiles.PROFILES}}
@@ -520,6 +590,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
     hr_items = _row_items(high, "Risk", lambda r: _dot(r.get("ID"), r.get("Project"), r.get("Owner")))
     greet = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
     contacts_js = json.dumps(_contacts(store), ensure_ascii=False).replace("</", "<\\/")
+    team_js = json.dumps(_team(store), ensure_ascii=False).replace("</", "<\\/")
     profiles_js = json.dumps([{"key": p["key"], "name": p["name"]} for p in profiles.PROFILES]).replace("</", "<\\/")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -541,8 +612,9 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
 <section><h2>\u270b Waiting on me</h2>{_actions(waiting, "Nobody is waiting on you.")}</section>
 <section><h2>\u23f0 Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
 <section><h2>\U0001F4C5 This week's meetings</h2>{_meetings(store, meetings, now)}</section>
+<section class="wide team"><h2>\U0001F465 Pending with team</h2><div id="team"></div></section>
 <section class="wide"><h2>\U0001F4AC Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
-</div></main><script>{THEME_JS}{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js)}</script></body></html>"""
+</div></main><script>{THEME_JS}{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js).replace("__TEAM__", team_js)}</script></body></html>"""
 
 
 def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:

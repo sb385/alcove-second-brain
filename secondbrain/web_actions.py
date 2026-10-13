@@ -60,6 +60,11 @@ def apply(store: Store, actions: list[dict], now: datetime) -> list[str]:
             note = f"due date shifted to {value}"
         elif kind == "nudge":
             note = f"forwarded {value}"  # e.g. "on WhatsApp to Hena"
+            if " to " in value:  # shows under that person in "Pending with team"
+                who = value.split(" to ", 1)[1].strip()
+                if row.get("Pushed To") != who or not row.get("Pushed On"):  # a reminder keeps the first date
+                    row["Pushed On"] = a.get("at", "")[:10] or now.date().isoformat()
+                row["Pushed To"] = who
         else:
             continue
         row["Notes"] = f"{row.get('Notes') or ''}\n[{stamp}] Dashboard: {note}".strip()
