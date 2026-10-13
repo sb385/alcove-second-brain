@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -105,7 +106,8 @@ def cmd_merge(a) -> None:
     stats = store.merge(run.extraction, items, now)
     store.refresh_rollups(now.date())
     path = store.save()
-    _log_sources(run.sources, now)
+    if not os.getenv("SB_NO_SOURCE_LOG"):  # backfill: keep old mail out of the "last 24h" list
+        _log_sources(run.sources, now)
     archive = settings.data_dir / "runs" / f"{now:%Y-%m-%d}"
     archive.mkdir(parents=True, exist_ok=True)
     (archive / f"run-{now:%H%M}.json").write_text(raw, encoding="utf-8")

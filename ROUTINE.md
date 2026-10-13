@@ -40,11 +40,16 @@ python -m secondbrain.cloud sync-status --source <gmail|calendar|whatsapp|wispr>
 Search with `newer_than:1d -category:promotions -category:social`, and also `in:sent newer_than:1d`
 (the CEO's own replies are where they promise and approve things). Open each relevant thread.
 
-**To-only rule (the CEO's instruction):** use an incoming email only if one of `ME_EMAILS` is in
-its **To** header. Skip mail where the CEO is only in **Cc** or **Bcc**, or got it through a group
-or mailing list. The CEO is copied on far too much for Cc mail to be useful. Exceptions: mail the
-CEO **sent**, and a Cc thread where the CEO has replied in the last 24h (they chose to engage).
-Count skipped Cc-only mails in `--read` but not in `--used`.
+**To first, Cc only when it matters (the CEO's instruction):** mail with one of `ME_EMAILS` in the
+**To** header is the CEO's real inbox: always read it. The CEO is copied (Cc/Bcc, groups, mailing
+lists) on a huge amount of mail, so for those, glance at the subject and opening lines and use the
+mail **only if it clearly matters to the CEO**:
+- an approval, signature, payment release or decision is being asked of the CEO
+- money at stake, a deadline, a legal / RERA / permit / bank / regulatory issue
+- a serious risk (delay, dispute, safety incident, unhappy buyer escalation, phishing)
+- the CEO is named and asked something directly, or the CEO has replied in the thread
+Otherwise skip it. Mail the CEO **sent** always counts. Count skipped Cc mails in `--read` but not
+in `--used`, and in `--note` say how many Cc mails were used vs skipped.
 
 Also skip newsletters, OTPs, receipts and automated notifications unless they show a payment due,
 a deadline or a risk. Source ref: `gmail:<threadId>`, link `https://mail.google.com/mail/u/0/#all/<threadId>`.

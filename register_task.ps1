@@ -12,6 +12,7 @@ $repeat = New-ScheduledTaskTrigger -Once -At 8:00AM -RepetitionInterval (New-Tim
     -RepetitionDuration (New-TimeSpan -Hours 12 -Minutes 1)
 $trigger.Repetition = $repeat.Repetition
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -MultipleInstances IgnoreNew `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 90)
 Register-ScheduledTask -TaskName "Alcove Second Brain" -Action $action -Trigger $trigger `
     -Settings $settings -Description "Second-brain sync every 2h, 08:00-20:00 IST" -Force
@@ -22,6 +23,7 @@ $fill = New-ScheduledTaskAction -Execute (Join-Path $PSScriptRoot ".venv\Scripts
     -Argument "-m secondbrain.publish --if-empty" -WorkingDirectory $PSScriptRoot
 $every10 = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 10)
 $fillSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 Register-ScheduledTask -TaskName "Alcove Second Brain - keep site filled" -Action $fill -Trigger $every10 `
     -Settings $fillSettings -Description "Re-upload the dashboard if a redeploy left the site empty" -Force
