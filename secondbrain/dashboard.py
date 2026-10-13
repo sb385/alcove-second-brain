@@ -154,6 +154,11 @@ background:var(--card);color:var(--ink);cursor:pointer}
 background:var(--card);color:var(--ink)}
 .act-form .go{background:var(--accent);border-color:var(--accent);color:var(--card)}
 li.closed{opacity:.35;text-decoration:line-through;transition:opacity .5s}
+.fwd{display:flex;flex-direction:column;gap:6px;width:100%}
+.fwd label{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.fwd .to{flex:1;min-width:160px}
+.fwd textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
+background:var(--card);color:var(--ink);width:100%;resize:vertical}
+.fwd .who{color:var(--mute);font-size:12px}.fwd .go{align-self:flex-start}
 .chip-note{color:var(--accent);font-weight:600}.flag.Follow{color:var(--accent)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
 padding:9px 16px;border-radius:8px;font-size:14px;z-index:60;max-width:calc(100vw - 32px)}
@@ -161,7 +166,21 @@ padding:9px 16px;border-radius:8px;font-size:14px;z-index:60;max-width:calc(100v
 
 ACTIONS_JS = """
 (function(){
-  var SB=window.SB||{}, base=SB.base||'', PROFS=__PROFILES__;
+  var SB=window.SB||{}, base=SB.base||'', PROFS=__PROFILES__, CONTACTS=__CONTACTS__;
+  function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  // Contact pickers (shared <datalist>s): type a name, pick from the list.
+  (function(){var w=document.createElement('datalist');w.id='sb-wa';var m=document.createElement('datalist');m.id='sb-mail';
+    CONTACTS.forEach(function(c){
+      if(c.p){var o=document.createElement('option');o.value=c.n;o.label=(c.r?c.r+' \u00b7 ':'')+'+'+c.p;w.appendChild(o);}
+      if(c.e){var o2=document.createElement('option');o2.value=c.n;o2.label=(c.r?c.r+' \u00b7 ':'')+c.e;m.appendChild(o2);}
+    });document.body.appendChild(w);document.body.appendChild(m);})();
+  function findContact(q,need){q=(q||'').trim().toLowerCase();if(!q)return null;
+    var list=CONTACTS.filter(function(c){return c[need];});
+    return list.filter(function(c){return c.n.toLowerCase()===q;})[0]||
+      (function(){var m=list.filter(function(c){return c.n.toLowerCase().indexOf(q)>=0;});return m.length===1?m[0]:null;})();}
+  function draft(li){var t=li.querySelector('.t'),m=li.querySelector('.m');
+    var item=t?t.textContent.trim():'',meta=m?m.textContent.split(' \u00b7 source')[0].trim():'';
+    return 'please follow up on this and update me:\\n\u2022 '+item+'\\n\u2022 '+meta;}
   function iso(d){var z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10);}
   function plus(n){var d=new Date();d.setDate(d.getDate()+n);return iso(d);}
   function nice(v){var d=new Date(v+'T00:00:00');return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});}
@@ -189,17 +208,39 @@ ACTIONS_JS = """
     var id=li.dataset.id, risk=id.charAt(0)==='R';
     var b=document.createElement('div');b.className='acts';
     b.innerHTML='<button data-a="done">\u2713 Close</button><button data-a="followup">\u21bb Follow up</button>'+
-      '<button data-a="move">\u21c4 Move</button>'+(risk?'':'<button data-a="shift">\U0001F4C5 Shift</button>');
+      '<button data-a="move">\u21c4 Move</button>'+(risk?'':'<button data-a="shift">\U0001F4C5 Shift</button>')+
+      '<button data-a="wa">\U0001F4AC WhatsApp</button><button data-a="mail">\u2709 Email</button>';
     li.appendChild(b);
   }
   document.querySelectorAll('section li[data-id]').forEach(bar);
   function form(li,html){var f=li.querySelector('.act-form');if(f){f.remove();}f=document.createElement('div');
     f.className='act-form';f.innerHTML=html+'<button data-cancel>Cancel</button>';li.appendChild(f);return f;}
+  function forward(li,f,kind){
+    var wa=kind==='wa',id=li.dataset.id,raw=f.querySelector('.to').value.trim(),msg=f.querySelector('textarea').value;
+    var c=findContact(raw,wa?'p':'e'),name,addr;
+    if(c){name=c.n;addr=wa?c.p:c.e;}
+    else if(wa&&/\\d{10,}/.test(raw.replace(/\\D/g,''))){addr=raw.replace(/\\D/g,'');if(addr.length===10)addr='91'+addr;name=f.querySelector('.nm').value.trim()||'+'+addr;}
+    else if(!wa&&/@/.test(raw)){addr=raw;name=f.querySelector('.nm').value.trim()||raw;}
+    else{toast(wa?'Pick a name from the list, or type a mobile number.':'Pick a name from the list, or type an email address.');return;}
+    var first=name.charAt(0)==='+'?'':name.split(' ')[0];
+    var text=(first?'Hi '+first+', ':'Hi, ')+msg;
+    if(wa){window.open('https://wa.me/'+addr+'?text='+encodeURIComponent(text),'_blank','noopener');}
+    else{var subj='Follow up: '+(li.querySelector('.t')||{}).textContent;
+      window.location.href='mailto:'+encodeURIComponent(addr)+'?subject='+encodeURIComponent(subj.slice(0,120))+'&body='+encodeURIComponent(text);}
+    var save=f.querySelector('.save');
+    if(!c&&!save.hidden&&save.querySelector('input[type=checkbox]').checked&&f.querySelector('.nm').value.trim()){
+      fetch(base+'/api/item-action',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Second-Brain':'1'},
+        body:JSON.stringify({item:'',action:'contact',value:f.querySelector('.nm').value.trim()+'|'+(wa?addr:'')+'|'+(wa?'':addr)})})
+        .then(function(r){if(r.ok){CONTACTS.push({n:f.querySelector('.nm').value.trim(),p:wa?addr:'',e:wa?'':addr,r:''});}});}
+    send(id,'nudge',(wa?'on WhatsApp':'by email')+' to '+name,(wa?'WhatsApp':'Email')+' opened for '+name);
+    f.remove();
+  }
   document.addEventListener('click',function(e){
     var btn=e.target.closest('.acts button, .act-form button');if(!btn)return;
     var li=btn.closest('li[data-id]'),id=li.dataset.id;
     if(btn.hasAttribute('data-cancel')){btn.parentNode.remove();return;}
     if(btn.dataset.when){send(id,'followup',btn.dataset.when,'Follow-up set for '+nice(btn.dataset.when));btn.parentNode.remove();return;}
+    if(btn.dataset.fwd){forward(li,btn.parentNode,btn.dataset.fwd);return;}
     if(btn.dataset.save){var f=btn.parentNode,el=f.querySelector('select,input');if(!el.value)return;
       var a=btn.dataset.save;send(id,a,el.value,a==='move'?'Moved to '+el.value:a==='shift'?'Due date set to '+nice(el.value):'Follow-up set for '+nice(el.value));f.remove();return;}
     var a=btn.dataset.a;
@@ -209,6 +250,16 @@ ACTIONS_JS = """
     else if(a==='move'){var cur=li.dataset.p;form(li,'Move to: <select>'+PROFS.filter(function(x){return x.key!==cur;}).map(function(x){
       return '<option>'+x.name+'</option>';}).join('')+'</select><button class="go" data-save="move">Move</button>');}
     else if(a==='shift'){form(li,'New due date: <input type="date" min="'+plus(0)+'"><button class="go" data-save="shift">Save</button>');}
+    else if(a==='wa'||a==='mail'){var wa=a==='wa';
+      var f=form(li,'<div class="fwd"><label>'+(wa?'WhatsApp to':'Email to')+' <input class="to" list="'+(wa?'sb-wa':'sb-mail')+
+        '" placeholder="Type a name'+(wa?' or number':' or email')+'" autocomplete="off"></label><span class="who"></span>'+
+        '<textarea rows="4">'+esc(draft(li))+'</textarea>'+
+        '<label class="save" hidden><input type="checkbox" checked> Save as contact: <input class="nm" placeholder="Name"></label>'+
+        '<button class="go" data-fwd="'+a+'">'+(wa?'Open WhatsApp':'Open email')+'</button></div>');
+      var to=f.querySelector('.to');to.focus();
+      to.addEventListener('input',function(){var c=findContact(to.value,wa?'p':'e'),who=f.querySelector('.who'),sv=f.querySelector('.save');
+        if(c){who.textContent=' '+(wa?'+'+c.p:c.e);sv.hidden=true;}
+        else{who.textContent='';var raw=to.value.trim();sv.hidden=!(wa?/\\d{10,}/.test(raw.replace(/\\D/g,'')):/@/.test(raw));}});}
   });
 })();
 """
@@ -256,6 +307,23 @@ TABS_JS = """
   show(tabs.some(function(t){return t.dataset.tab===start;})?start:'all');
 })();
 """
+
+
+def _contacts(store: Store) -> list[dict]:
+    """People with a phone or email, for the forward pickers. Assistants first."""
+    import re as _re
+    out = []
+    for r in store.rows["People"]:
+        phone = _re.sub(r"\D", "", str(r.get("Phone") or "").split(",")[0])
+        if len(phone) == 10:
+            phone = "91" + phone
+        email = str(r.get("Email") or "").strip()
+        if not (phone or email) or not r.get("Name"):
+            continue
+        role = " · ".join(str(x) for x in (r.get("Role"), r.get("Organisation")) if x)
+        out.append({"n": str(r["Name"]), "p": phone, "e": email, "r": role})
+    pin = lambda c: 0 if _re.search(r"assistant|\bea\b|secretary", c["r"], _re.I) and "manager" not in c["r"].lower() else 1  # noqa: E731
+    return sorted(out, key=lambda c: (pin(c), c["n"].lower()))
 
 
 def _per_profile(rows, key_of) -> dict:
@@ -352,6 +420,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
                           lambda r: _dot(r.get("ID"), r.get("Owner"), f"due {r['Due']}" if r.get("Due") else ""))
     hr_items = _row_items(high, "Risk", lambda r: _dot(r.get("ID"), r.get("Project"), r.get("Owner")))
     greet = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
+    contacts_js = json.dumps(_contacts(store), ensure_ascii=False).replace("</", "<\\/")
     profiles_js = json.dumps([{"key": p["key"], "name": p["name"]} for p in profiles.PROFILES]).replace("</", "<\\/")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -374,7 +443,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
 <section><h2>Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
 <section><h2>This week's meetings</h2>{_meetings(store, meetings, now)}</section>
 <section class="wide"><h2>Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
-</div></main><script>{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js)}</script></body></html>"""
+</div></main><script>{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js)}</script></body></html>"""
 
 
 def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:

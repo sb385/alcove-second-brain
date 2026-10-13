@@ -34,6 +34,9 @@ def apply(store: Store, actions: list[dict], now: datetime) -> list[str]:
     handled = []
     for a in sorted(actions, key=lambda x: x.get("at", "")):
         handled.append(a["uid"])
+        if a["action"] == "contact":
+            _upsert_contact(store, a.get("value") or "", stamp)
+            continue
         sheet = SHEET.get(a["item"][:1])
         row = store._by_id(sheet, a["item"]) if sheet else None
         if not row:
@@ -55,12 +58,37 @@ def apply(store: Store, actions: list[dict], now: datetime) -> list[str]:
         elif kind == "shift" and sheet != "Risks":
             row["Due"] = value
             note = f"due date shifted to {value}"
+        elif kind == "nudge":
+            note = f"forwarded {value}"  # e.g. "on WhatsApp to Hena"
         else:
             continue
         row["Notes"] = f"{row.get('Notes') or ''}\n[{stamp}] Dashboard: {note}".strip()
         if sheet != "Risks":  # risks track "Last Seen" instead
             row["Last Updated"] = stamp
     return handled
+
+
+def _upsert_contact(store: Store, value: str, stamp: str) -> None:
+    """'Name|phone|email' from the dashboard: add to People, or fill in a known person's gaps."""
+    from .sources.whatsapp import norm_phone
+    from .store import norm
+    name, phone, email = (value.split("|") + ["", "", ""])[:3]
+    name, phone, email = name.strip(), norm_phone(phone), email.strip().lower()
+    if not name:
+        return
+    row = next((p for p in store.rows["People"]
+                if norm(p.get("Name")) == norm(name)
+                or (phone and norm_phone(p.get("Phone")) == phone)
+                or (email and str(p.get("Email") or "").lower() == email)), None)
+    if row is None:
+        row = {"Name": name, "First Seen": stamp}
+        store.rows["People"].append(row)
+    if phone:
+        row["Phone"] = "+" + phone
+    if email:
+        row["Email"] = email
+    row["Last Seen"] = stamp
+    row["Notes"] = f"{row.get('Notes') or ''}\n[{stamp}] Contact saved from dashboard".strip()
 
 
 def sync(now: datetime | None = None) -> int:

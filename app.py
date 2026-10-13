@@ -150,7 +150,9 @@ def dashboard():
 # to the Excel, then acknowledges them. Redeploys wipe STORE, so the PC also
 # pulls them before every push (scripts/pre-push).
 ACTIONS = STORE / "actions.jsonl"
-ACTION_KINDS = {"done", "followup", "move", "shift"}
+ACTION_KINDS = {"done", "followup", "move", "shift", "nudge", "contact"}
+# nudge   = "forwarded via WhatsApp/email to X" (logged in the item's Notes)
+# contact = "Name|phone|email" added from the dashboard (item is empty)
 ITEM_RE = re.compile(r"^[CAR]-\d{1,6}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 try:
@@ -180,7 +182,16 @@ def item_action():
         abort(403)
     d = request.get_json(silent=True) or {}
     item, kind, value = str(d.get("item", "")), str(d.get("action", "")), str(d.get("value", ""))
-    if kind not in ACTION_KINDS or not ITEM_RE.match(item):
+    if kind not in ACTION_KINDS:
+        abort(400)
+    if kind == "contact":
+        parts = value.split("|")
+        if item or len(parts) != 3 or not parts[0].strip() or len(value) > 200 \
+                or not (re.fullmatch(r"\d{10,15}", parts[1]) or "@" in parts[2]):
+            abort(400)
+    elif not ITEM_RE.match(item):
+        abort(400)
+    if kind == "nudge" and not (0 < len(value) <= 160):
         abort(400)
     if kind in ("followup", "shift") and not DATE_RE.match(value):
         abort(400)
