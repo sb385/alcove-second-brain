@@ -10,7 +10,7 @@ when it last worked.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 
@@ -138,3 +138,30 @@ def markdown_box(log: dict, now: datetime) -> list[str]:
     emoji = {"ok": "✅", "failed": "⚠️", "stale": "🕒", "none": "➖"}
     line = " · ".join(f"{emoji[c['state']]} {c['label']}" for c in cards(log, now))
     return [f"{line} — {_last_sync(log)}"]
+
+
+OVERLAP = timedelta(minutes=15)
+MAX_WINDOW = timedelta(hours=72)
+
+
+def window(now: datetime) -> dict:
+    """Read window for the next sync: since the last sync (minus a small overlap so
+    nothing slips through), else 24h; never more than 72h back."""
+    runs = [e["last_run"] for e in load().values() if e.get("last_run")]
+    since = datetime.fromisoformat(max(runs)) - OVERLAP if runs else now - timedelta(hours=24)
+    since = max(since, now - MAX_WINDOW).astimezone(settings.tz)
+    hours = max(1, -(-int((now - since).total_seconds()) // 3600))  # ceil
+    return {
+        "since_local": f"{since:%d %b %Y} {clock(since)}",
+        "since_utc": since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "since_epoch": int(since.timestamp()),
+        "hours": hours,
+    }
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.argv[1:] == ["window"]:
+        print(json.dumps(window(datetime.now(settings.tz))))
+    else:
+        sys.exit("usage: python -m secondbrain.sync_status window")
