@@ -42,6 +42,15 @@ if ($Backfill) {
   $env:SB_NO_SOURCE_LOG = "1"
   $sendSummary = $false
   Log "===== backfill  window: $($win.since_local) -> $($win.until_local) ====="
+} elseif ($Since) {
+  # Catch-up: a normal sync (all sources) from an explicit start time until now.
+  $s = [DateTimeOffset]::Parse($Since)
+  $win = [pscustomobject]@{
+    since_local = $s.ToLocalTime().ToString("dd MMM yyyy h:mm tt"); since_utc = $s.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    since_epoch = $s.ToUnixTimeSeconds(); hours = [int][Math]::Ceiling(([DateTimeOffset]::Now - $s).TotalHours)
+  }
+  $sendSummary = $Summary -and -not $NoSummary
+  Log "===== catch-up  window: $($win.since_local) -> now  ($($win.hours)h)  summary: $sendSummary ====="
 } else {
   # Sync window: since the last sync (15 min overlap), else the last 24h.
   $win = (python -m secondbrain.sync_status window | Out-String).Trim() | ConvertFrom-Json
