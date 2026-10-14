@@ -15,11 +15,17 @@ GRAPH_URL = "https://graph.facebook.com/v21.0/{phone_id}/messages"
 def _meetings_line(meetings, now: datetime) -> str:
     if meetings is None:
         return ""
-    today = [m for m in meetings if m.start.date() == now.date() and not m.all_day and m.end > now]
-    if not today:
+    todays = [m for m in meetings if m.start.date() == now.date() and not m.all_day]
+    left = [m for m in todays if m.end > now]
+    plural = lambda n: f"{n} meeting{'s' if n > 1 else ''}"  # noqa: E731
+    if not todays:
         return "\n📅 No meetings today."
-    first = today[0]
-    return f"\n📅 {len(today)} meeting{'s' if len(today) > 1 else ''} today · first {first.start.strftime('%I:%M %p').lstrip('0')} {first.title}"
+    if not left:
+        return f"\n📅 {plural(len(todays))} today, all done."
+    first = left[0]
+    done = len(todays) - len(left)
+    return (f"\n📅 {plural(len(left))} left today" + (f" ({done} done)" if done else "")
+            + f" · next {first.start.strftime('%I:%M %p').lstrip('0')} {first.title}")
 
 
 def compose(items: list[Action], now: datetime, meetings=None) -> str:
