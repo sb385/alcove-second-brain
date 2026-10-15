@@ -77,11 +77,6 @@ PBKDF2_ITERATIONS = 310_000
 
 
 def _password_record() -> dict | None:
-    if OVERRIDE.exists():
-        try:
-            return json.loads(OVERRIDE.read_text(encoding="utf-8"))["password"]
-        except (ValueError, KeyError):
-            pass
     return _AUTH.get("password")
 
 

@@ -1,8 +1,8 @@
 {
- "upload_token_sha256": "0091edadc409818512870984fa6d16f9308fd00142119fddf271988d5ef1ad1d",
+ "upload_token_sha256": "f0a2b618bb0a16cba25ac5589d98247f6719a5c7b1cb8a5f909edebc4d191241",
  "password": {
-  "salt": "3b7ffe68f94e3aff8d62ab167ac1da39",
+  "salt": "385de0e68cbdf0f66adead8687da87b7",
   "iterations": 310000,
-  "hash": "2deb8a2a763bdab7d46a6142a24af9aae5bd13b9eb45b08b2c1f9646444f6de4"
+  "hash": "19aaaa0d3725c26f277adb958e36a7cdbec135b56c8d051592c3182ae7f5594b"
  }
 }
