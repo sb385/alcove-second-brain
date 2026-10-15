@@ -155,7 +155,7 @@ ACTIONS = STORE / "actions.jsonl"
 ACTION_KINDS = {"done", "followup", "move", "shift", "nudge", "contact"}
 # nudge   = "forwarded via WhatsApp/email to X" (logged in the item's Notes)
 # contact = "Name|phone|email" added from the dashboard (item is empty)
-ITEM_RE = re.compile(r"^[CAR]-\d{1,6}$")
+ITEM_RE = re.compile(r"^[CART]-\d{1,6}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 try:
     from secondbrain.profiles import NAMES as PROFILE_NAMES

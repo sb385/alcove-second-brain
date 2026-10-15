@@ -104,7 +104,8 @@ def follow_ups_due(store: Store, today: date) -> list[Action]:
     out = []
     sheets = (("Commitments", "Item", OPEN_COMMITMENT, "Commitment"),
               ("Approvals", "Item", OPEN_APPROVAL, "Approval"),
-              ("Risks", "Risk", {"Open"}, "Risk"))
+              ("Risks", "Risk", {"Open"}, "Risk"),
+              ("Tasks", "Work", {"Open", "Blocked"}, "Task"))
     for sheet, col, open_states, kind in sheets:
         for r in store.rows[sheet]:
             fu = _days(r.get("Follow Up"), today)

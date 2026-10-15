@@ -17,8 +17,8 @@ import requests
 from .config import settings
 from .store import Store
 
-SHEET = {"C": "Commitments", "A": "Approvals", "R": "Risks"}
-CLOSED = {"Commitments": "Done", "Approvals": "Done", "Risks": "Closed"}
+SHEET = {"C": "Commitments", "A": "Approvals", "R": "Risks", "T": "Tasks"}
+CLOSED = {"Commitments": "Done", "Approvals": "Done", "Risks": "Closed", "Tasks": "Done"}
 LOG = "web_actions_applied.jsonl"  # local audit trail of every applied click
 
 
@@ -48,6 +48,8 @@ def apply(store: Store, actions: list[dict], now: datetime) -> list[str]:
                 row["Done On"] = now.date().isoformat()
             elif sheet == "Approvals":
                 row["Resolved On"] = now.date().isoformat()
+            elif sheet == "Tasks":
+                row["Done On"] = now.date().isoformat()
             note = "closed"
         elif kind == "followup":
             row["Follow Up"] = value

@@ -56,7 +56,13 @@ for _sheet, _after in (("Commitments", "Due"), ("Approvals", "Due"), ("Risks", "
     SHEETS[_sheet].insert(SHEETS[_sheet].index(_after) + 1, "Follow Up")
     # Who the CEO last pushed this to (WhatsApp/email from the dashboard), and when.
     SHEETS[_sheet][SHEETS[_sheet].index("Follow Up") + 1:SHEETS[_sheet].index("Follow Up") + 1] = ["Pushed To", "Pushed On"]
-ID_PREFIX = {"Commitments": "C", "Decisions": "D", "Approvals": "A", "Risks": "R"}
+# Team tracker files (secondbrain/trackers.py), one row per owner x area x work stream.
+SHEETS["Tasks"] = [
+    "ID", "Project", "Profile", "Tracker", "Area", "Work", "Owner", "Waiting On", "Due", "Status",
+    "Progress", "Follow Up", "Pushed To", "Pushed On", "Source File", "Key",
+    "First Seen", "Last Updated", "Done On", "Notes",
+]
+ID_PREFIX = {"Commitments": "C", "Decisions": "D", "Approvals": "A", "Risks": "R", "Tasks": "T"}
 
 OPEN_COMMITMENT = {"Open", "Blocked"}
 OPEN_APPROVAL = {"Pending"}

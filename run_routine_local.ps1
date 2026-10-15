@@ -26,6 +26,9 @@ if (-not $Backfill -and (Test-Path $lock) -and ((Get-Date) - (Get-Item $lock).La
   exit 0
 }
 
+# Tell the 30-minute tracker job a sync is writing the ledger.
+Set-Content ".run\sync.lock" "$(Get-Date -Format o)"
+
 # Make `python` resolve to the project venv for Claude's Bash commands too.
 $env:PATH = "$PSScriptRoot\.venv\Scripts;$env:PATH"
 $env:PYTHONIOENCODING = "utf-8"
@@ -148,4 +151,5 @@ Log "===== end (exit $code) ====="
 
 # Upload the fresh dashboard + Excel to the hosted website (app.py), if configured.
 python -m secondbrain.publish *>&1 | Out-File $log -Append -Encoding utf8
+Remove-Item ".run\sync.lock" -ErrorAction SilentlyContinue
 exit $code

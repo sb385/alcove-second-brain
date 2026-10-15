@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from html import escape
 
 from .config import settings
@@ -254,6 +254,20 @@ background:var(--card);color:var(--ink)}
 .act-form .go{background:var(--accent);border-color:var(--accent);color:var(--card)}
 li.closed{opacity:.35;text-decoration:line-through;transition:opacity .5s}
 .fwd{display:flex;flex-direction:column;gap:6px;width:100%}
+.acts{gap:2px;margin-top:5px}
+.acts button{font-size:12px;padding:2px 8px;border-color:transparent;background:transparent;color:var(--mute)}
+section li:hover .acts button,section li:focus-within .acts button{border-color:var(--line);color:var(--ink)}
+.acts button[data-a=wa]{color:#2b9a5a;border-color:transparent;background:transparent}
+.acts button[data-a=mail]{color:var(--blue);border-color:transparent;background:transparent}
+section li:hover .acts button[data-a=wa]{background:#effaf3;border-color:#b2e5c7}
+section li:hover .acts button[data-a=mail]{background:var(--blue-soft);border-color:var(--blue-soft)}
+@media (hover:none){.acts button{border-color:var(--line)}}
+.addnum{font:inherit;font-size:12px;border:1px dashed var(--accent);background:none;color:var(--accent);border-radius:999px;
+padding:3px 10px;cursor:pointer}
+@media (max-width:600px){#team .pchips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#team .pchip{padding:6px 8px;gap:7px;min-width:0}#team .pchip .avatar{width:26px;height:26px;font-size:13px}
+#team .pn,#team .pc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#team .pchip>span:last-child{min-width:0}
+#team .pmore{grid-column:1/-1}.ppl-q{width:46%}}
 .person{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:10px 0}
 .person-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .person-h .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;
@@ -262,6 +276,26 @@ background:var(--accent-soft,#e7edf6);color:var(--accent)}
 .person-h .remind{margin-left:auto;font:inherit;font-size:12px;padding:4px 11px;border-radius:999px;cursor:pointer;
 color:#128c4b;border:1px solid #b2e5c7;background:#effaf3}
 #team .person ul{margin-top:4px}
+.ppl-q{margin-left:auto;font:inherit;font-size:13px;text-transform:none;letter-spacing:0;padding:5px 10px;border-radius:999px;
+border:1px solid var(--line);background:var(--card);color:var(--ink);width:min(220px,50%)}
+.pchips{display:flex;flex-wrap:wrap;gap:8px}
+.pchip{display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;
+padding:7px 12px 7px 8px;cursor:pointer;font:inherit;text-align:left}
+.pchip:hover{border-color:var(--accent)}.pchip.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.pchip .avatar,.ppanel .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+background:var(--accent-soft);color:var(--accent);flex:0 0 auto}
+.pn{display:block;font-weight:600;font-size:14px}
+.pmore{font:inherit;font-size:13px;border:1px dashed var(--line);background:none;color:var(--accent);border-radius:12px;padding:7px 14px;cursor:pointer}.pc{display:block;font-size:12px;color:var(--mute)}
+.ppanel{margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--bg)}
+.ppanel .pclose{margin-left:6px;border:0;background:none;color:var(--mute);font-size:16px;cursor:pointer}
+.pgrp h3{font-size:13px;margin:14px 0 2px;color:var(--accent)}
+.trk{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0}
+.trk-h{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}.trk-h b{font-size:15px}.trk-c{margin-left:auto;font-size:13px}
+.stuck-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 2px}
+.stuck{font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--amber-soft);background:var(--amber-soft);
+color:var(--amber);cursor:pointer}
+.trk details{border-top:1px solid var(--line);padding:6px 0}.trk summary{cursor:pointer;padding:4px 0;list-style-position:inside}
+.trk summary .sub{margin-left:6px}
 .fwd label{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.fwd .to{flex:1;min-width:160px}
 .fwd textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
 background:var(--card);color:var(--ink);width:100%;resize:vertical}
@@ -307,24 +341,58 @@ ACTIONS_JS = """
   function today(){return iso(new Date());}
   function ago(d){if(!d)return '';var n=Math.round((new Date(today())-new Date(d))/864e5);
     return n<=0?'sent today':n===1?'sent yesterday':'sent '+n+' days ago';}
+  var PEOPLE=__PEOPLE__, SEL='', ALL=false, TOP=15;
+  function bucketOf(x){if(!x.due)return 'later';var n=(new Date(x.due)-new Date(today()))/864e5;return n<0?'overdue':n<=7?'week':'later';}
+  function dueFlag(x){if(!x.due)return '';var n=Math.round((new Date(x.due)-new Date(today()))/864e5);
+    return '<span class="flag '+(n<0?'Overdue':n<=7?'Due':'Open')+'">'+(n<0?(-n)+'d late':n===0?'due today':'due '+nice(x.due))+'</span>';}
+  function collect(){
+    var tab=window.SBtab||'all',by={};
+    function add(n,type,x){if(!n||x.gone)return;if(tab!=='all'&&x.p!==tab)return;(by[n]=by[n]||{own:[],wait:[],sent:[]})[type].push(x);}
+    PEOPLE.forEach(function(x){add(x.owner,'own',x);if(x.wait)add(x.wait,'wait',x);});
+    TEAM.forEach(function(x){add(x.to,'sent',x);});
+    return by;
+  }
+  function item(x,flag){return '<li data-p="'+x.p+'" data-id="'+esc(x.id)+'"><div class="row"><div class="t">'+esc(x.t)+'</div>'+(flag||'')+
+    '</div><div class="m">'+esc(x.m)+'</div></li>';}
+  function panel(n,b){
+    var c=findContact(n,'p');
+    var od=b.own.filter(function(x){return bucketOf(x)==='overdue';}),wk=b.own.filter(function(x){return bucketOf(x)==='week';}),
+        lt=b.own.filter(function(x){return bucketOf(x)==='later'&&x.due;}),nd=b.own.filter(function(x){return !x.due;});
+    var g=[['\u23f0 Overdue',od,dueFlag],['\U0001F4C5 Due in the next 7 days',wk,dueFlag],['\U0001F5D3 Later',lt,dueFlag],['\U0001F5C2 No date',nd,dueFlag],
+           ['\u26d4 Others are waiting on '+n.split(' ')[0],b.wait,dueFlag],['\U0001F4AC You sent them',b.sent,function(x){return '<span class="flag Follow">'+esc(ago(x.on))+'</span>';}]];
+    return '<div class="ppanel"><div class="person-h"><span class="avatar">'+esc(n.charAt(0).toUpperCase())+'</span><b>'+esc(n)+'</b>'+
+      (c?'<span class="cnt">'+esc((c.r?c.r+' \u00b7 ':'')+'+'+c.p)+'</span>':'<button class="addnum" data-addnum="'+esc(n)+'">\uff0b Add WhatsApp number</button>')+
+      (c&&(od.length||wk.length||b.wait.length)?'<button class="remind" data-to="'+esc(n)+'">\U0001F4AC Remind '+esc(n.split(' ')[0])+'</button>':'')+
+      '<button class="pclose" data-person="'+esc(n)+'" title="Close">\u2715</button></div>'+
+      g.filter(function(x){return x[1].length;}).map(function(x){return '<div class="pgrp"><h3>'+x[0]+' ('+x[1].length+')</h3><ul>'+
+        x[1].map(function(i){return item(i,x[2](i));}).join('')+'</ul></div>';}).join('')+'</div>';
+  }
   function renderTeam(){
     var box=document.getElementById('team');if(!box)return;
-    var by={};TEAM.forEach(function(x){(by[x.to]=by[x.to]||[]).push(x);});
-    var names=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length||a.localeCompare(b);});
-    if(!names.length){box.innerHTML='<p class="empty">Nothing pushed to anyone yet. Use \U0001F4AC WhatsApp or \u2709 Email on an item and it shows up here under that person.</p>';return;}
-    box.innerHTML=names.map(function(n){
-      var items=by[n].slice().sort(function(a,b){return (a.on||'').localeCompare(b.on||'');});
-      var c=findContact(n,'p');
-      return '<div class="grp person"><div class="person-h"><span class="avatar">'+esc(n.charAt(0).toUpperCase())+'</span>'+
-        '<b>'+esc(n)+'</b><span class="cnt">'+items.length+' pending</span>'+
-        (c?'<button class="remind" data-to="'+esc(n)+'">\U0001F4AC Remind all</button>':'')+'</div><ul>'+
-        items.map(function(x){var old=x.on&&(new Date(today())-new Date(x.on))/864e5>=3;
-          return '<li data-p="'+x.p+'" data-id="'+esc(x.id)+'"><div class="row"><div class="t">'+esc(x.t)+'</div>'+
-            '<span class="flag '+(old?'Overdue':'Follow')+'">'+esc(ago(x.on))+'</span></div><div class="m">'+esc(x.m)+'</div></li>';}).join('')+
-        '</ul></div>';}).join('')+'<p class="empty none-here" hidden>Nothing pending with the team for this profile.</p>';
-    box.querySelectorAll('li[data-id]').forEach(function(li){if(!li.querySelector('.acts'))bar(li);});
-    if(window.SBrefresh)window.SBrefresh();
+    var by=collect(),q=((document.getElementById('ppl-q')||{}).value||'').trim().toLowerCase();
+    var names=Object.keys(by).filter(function(n){return !q||n.toLowerCase().indexOf(q)>=0;});
+    function late(n){return by[n].own.filter(function(x){return bucketOf(x)==='overdue';}).length;}
+    function total(n){var b=by[n];return b.own.length+b.wait.length+b.sent.length;}
+    // Named people before '(name unknown)' numbers; then most late, then most work.
+    function unk(n){return /name unknown|^\\+?\\d/.test(n)?1:0;}
+    names.sort(function(a,b){return unk(a)-unk(b)||late(b)-late(a)||total(b)-total(a)||a.localeCompare(b);});
+    var more=(!ALL&&!q&&names.length>TOP)?names.length-TOP:0;
+    if(more){var keep=names.slice(0,TOP);if(SEL&&names.indexOf(SEL)>=TOP)keep.push(SEL);names=keep;}
+    if(!names.length){box.innerHTML='<p class="empty">'+(q?'No one matches '+esc(q)+'.':'No open work with anyone in this view yet.')+'</p>';return;}
+    var chips=names.map(function(n){var b=by[n],l=late(n),bits=[];
+      if(b.own.length)bits.push(b.own.length+' open');if(l)bits.push('<b class="red">'+l+' late</b>');
+      if(b.wait.length)bits.push(b.wait.length+' waiting on them');if(b.sent.length)bits.push(b.sent.length+' sent');
+      return '<button class="pchip'+(n===SEL?' on':'')+'" data-person="'+esc(n)+'"><span class="avatar">'+esc(n.charAt(0).toUpperCase())+
+        '</span><span><span class="pn">'+esc(n)+'</span><span class="pc">'+bits.join(' \u00b7 ')+'</span></span></button>';}).join('');
+    var tog=more?'<button class="pmore" data-more="1">Show all '+(names.length+more)+' people</button>':
+      (ALL&&!q&&Object.keys(by).length>TOP?'<button class="pmore" data-more="0">Show fewer</button>':'');
+    box.innerHTML='<div class="pchips">'+chips+tog+'</div>'+(SEL&&by[SEL]?panel(SEL,by[SEL]):'');
+    box.querySelectorAll('li[data-id]').forEach(function(li){bar(li);});
   }
+  window.SBonTab=function(){renderTeam();};
+  window.SBopenPerson=function(n){SEL=n;renderTeam();var pnl=document.querySelector('#team .ppanel');
+    if(pnl)pnl.scrollIntoView({behavior:'smooth',block:'start'});};
+  document.addEventListener('input',function(e){if(e.target.id==='ppl-q')renderTeam();});
   function addTeam(id,who){
     var src=document.querySelector('section:not(.team) li[data-id="'+id+'"]');
     var have=TEAM.filter(function(x){return x.id===id;})[0];
@@ -336,18 +404,39 @@ ACTIONS_JS = """
   var _effect=effect;
   effect=function(id,a,v,quiet){
     if(a==='nudge'&&v.indexOf(' to ')>0){addTeam(id,v.split(' to ').slice(1).join(' to ').trim());return;}
-    if(a==='done'){TEAM=TEAM.filter(function(x){return x.id!==id;});setTimeout(renderTeam,quiet?0:750);}
+    if(a==='done'){TEAM=TEAM.filter(function(x){return x.id!==id;});PEOPLE.forEach(function(x){if(x.id===id)x.gone=1;});
+      setTimeout(renderTeam,quiet?0:750);}
+    if(a==='move'){var mp=PROFS.filter(function(x){return x.name===v;})[0];if(mp)PEOPLE.concat(TEAM).forEach(function(x){if(x.id===id)x.p=mp.key;});}
     _effect(id,a,v,quiet);
   };
   (SB.pending||[]).forEach(function(x){effect(x.item,x.action,x.value,true);});
   document.addEventListener('click',function(e){
+    var mo=e.target.closest('[data-more]');if(mo){ALL=mo.dataset.more==='1';renderTeam();return;}
+    var an=e.target.closest('[data-addnum]');
+    if(an){var who=an.dataset.addnum,num=(prompt('WhatsApp number for '+who+' (with or without +91):')||'').replace(/\\D/g,'');
+      if(num.length===10)num='91'+num;
+      if(num.length<11||num.length>15){if(num)toast('That doesn\\u2019t look like a mobile number.');return;}
+      fetch(base+'/api/item-action',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Second-Brain':'1'},
+        body:JSON.stringify({item:'',action:'contact',value:who+'|'+num+'|'})}).then(function(r){
+        if(!r.ok)throw 0;CONTACTS.push({n:who,p:num,e:'',r:''});renderTeam();toast('Saved +'+num+' for '+who+'.');})
+        .catch(function(){toast('Could not save. Open the dashboard website and try again.');});
+      return;}
+    var pc=e.target.closest('[data-person]');
+    if(pc){var n=pc.dataset.person;SEL=(SEL===n&&!pc.classList.contains('stuck'))?'':n;renderTeam();
+      if(SEL){var pnl=document.querySelector('#team .ppanel');if(pnl&&(pc.classList.contains('stuck')||pnl.getBoundingClientRect().top>window.innerHeight*0.6))
+        pnl.scrollIntoView({behavior:'smooth',block:'start'});}
+      return;}
     var r=e.target.closest('button.remind');if(!r)return;
     var n=r.dataset.to,c=findContact(n,'p');if(!c)return;
-    var items=TEAM.filter(function(x){return x.to===n;});
-    var text='Hi '+n.split(' ')[0]+', a quick reminder on these pending items. Please update me:'+
-      items.map(function(x,i){return '\\n'+(i+1)+'. '+x.t+' ('+x.id+')';}).join('');
+    var b=collect()[n]||{own:[],wait:[],sent:[]};
+    var mine=b.own.filter(function(x){return bucketOf(x)!=='later';}),list=[],i=0;
+    mine.forEach(function(x){list.push((++i)+'. '+x.t+(x.due?' ('+(bucketOf(x)==='overdue'?'was due ':'due ')+nice(x.due)+')':''));});
+    var waits=b.wait.map(function(x){return '- '+x.t+' ('+x.id+')';});
+    var sent=b.sent.filter(function(x){return !mine.some(function(y){return y.id===x.id;});}).map(function(x){return (++i)+'. '+x.t;});
+    var text='Hi '+n.split(' ')[0]+', please update me on these:'+(list.concat(sent).length?'\\n'+list.concat(sent).join('\\n'):'')+
+      (waits.length?'\\n\\nThese are held up waiting on you:\\n'+waits.join('\\n'):'');
     window.open('https://wa.me/'+c.p+'?text='+encodeURIComponent(text),'_blank','noopener');
-    items.forEach(function(x){send(x.id,'nudge','reminder on WhatsApp to '+n,'Reminder opened for '+n);});
+    mine.concat(b.wait).concat(b.sent).forEach(function(x){send(x.id,'nudge','reminder on WhatsApp to '+n,'Reminder opened for '+n);});
   });
   function send(id,a,v,label){
     return fetch(base+'/api/item-action',{method:'POST',credentials:'same-origin',
@@ -422,7 +511,7 @@ TABS_JS = """
   var tabs=[].slice.call(document.querySelectorAll('.tab'));
   var cur='all';
   function show(p){
-    cur=p;
+    cur=p;window.SBtab=p;
     tabs.forEach(function(t){t.classList.toggle('on',t.dataset.tab===p);});
     document.querySelectorAll('[data-p]').forEach(function(el){
       el.hidden = el.dataset.gone==='1' || (p!=='all' && el.dataset.p!==p);
@@ -439,6 +528,7 @@ TABS_JS = """
       if(b.dataset.alert){b.classList.toggle('red',n>0);}
     });
     try{ history.replaceState(null,'',p==='all'?location.pathname+location.search:'#'+p); }catch(e){}
+    if(window.SBonTab)window.SBonTab(p);
   }
   window.SBrefresh=function(){show(cur);};
   tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.tab);});});
@@ -493,6 +583,78 @@ def _team(store: Store) -> list[dict]:
                 out.append({"id": r["ID"], "t": str(r.get(col) or ""), "m": meta, "p": _pk(r.get("Profile")),
                             "to": str(r["Pushed To"]), "on": str(r.get("Pushed On") or "")[:10]})
     return out
+
+
+def _people(store: Store) -> list[dict]:
+    """Open work that has an owner (team trackers + others' commitments), for the People section."""
+    from .insights import is_me
+    out = []
+    for r in store.rows["Tasks"]:
+        if r.get("Status") not in ("Open", "Blocked") or not (r.get("Owner") or r.get("Waiting On")):
+            continue
+        meta = " \u00b7 ".join(str(x) for x in (r["ID"], r.get("Area"), r.get("Tracker"), r.get("Owner"),
+                                                  r.get("Progress"), f"waiting on {r['Waiting On']}" if r.get("Waiting On") else "") if x)
+        out.append({"id": r["ID"], "t": str(r.get("Work") or ""), "m": meta, "p": _pk(r.get("Profile")),
+                    "owner": str(r.get("Owner") or ""), "wait": str(r.get("Waiting On") or ""), "due": str(r.get("Due") or "")[:10]})
+    for r in store.rows["Commitments"]:
+        if r.get("Status") not in OPEN_COMMITMENT or not r.get("Owner") or is_me(r.get("Owner"), r.get("Owner Email")):
+            continue
+        meta = " \u00b7 ".join(str(x) for x in (r["ID"], "Commitment", r.get("Project")) if x)
+        out.append({"id": r["ID"], "t": str(r.get("Item") or ""), "m": meta, "p": _pk(r.get("Profile")),
+                    "owner": str(r["Owner"]), "wait": "", "due": str(r.get("Due") or "")[:10]})
+    return out
+
+
+def _trackers_html(store: Store, today) -> str:
+    """Project trackers grouped by tracker -> area, with who the work is stuck on."""
+    from collections import Counter, defaultdict
+    trackers = defaultdict(list)
+    for r in store.rows["Tasks"]:
+        trackers[(r.get("Profile") or "Other", r.get("Tracker") or r.get("Source File") or "Tracker")].append(r)
+    if not trackers:
+        return ('<p class="empty">No tracker files yet. Save the team\'s Excel schedules in '
+                'OneDrive \u203a Alcove Trackers \u203a &lt;project&gt; and they appear here.</p>')
+    html = []
+    for (profile, name), rows in sorted(trackers.items()):
+        open_ = [r for r in rows if r.get("Status") in ("Open", "Blocked")]
+        late = [r for r in open_ if r.get("Due") and str(r["Due"])[:10] < today.isoformat()]
+        done = len(rows) - len(open_)
+        stuck = Counter(r["Waiting On"] for r in open_ if r.get("Waiting On"))
+        files = sorted({str(r.get("Source File") or "") for r in rows} - {""})
+        chips = "".join(f'<button class="stuck" data-person="{escape(n)}">\u26d4 {escape(n)} <b>{k}</b></button>'
+                        for n, k in stuck.most_common(8))
+        areas = defaultdict(list)
+        for r in open_:
+            areas[r.get("Area") or "General"].append(r)
+        blocks = []
+        for area, items in sorted(areas.items(), key=lambda kv: (-sum(1 for r in kv[1] if r in late), kv[0])):
+            items.sort(key=lambda r: str(r.get("Due") or "9999"))
+            n_late = sum(1 for r in items if r in late)
+            lis = []
+            for r in items:
+                due = str(r.get("Due") or "")[:10]
+                if due:
+                    days = (date.fromisoformat(due) - today).days
+                    flag = (f'<span class="flag Overdue">{-days}d late</span>' if days < 0 else
+                            f'<span class="flag Due">due {"today" if days == 0 else date.fromisoformat(due).strftime("%d %b")}</span>' if days <= 7 else
+                            f'<span class="flag Open">due {date.fromisoformat(due).strftime("%d %b")}</span>')
+                else:
+                    flag = '<span class="flag Waiting">blocked</span>' if r.get("Status") == "Blocked" else ""
+                meta = " \u00b7 ".join(str(x) for x in (r["ID"], r.get("Owner"), r.get("Progress"),
+                                                          f"waiting on {r['Waiting On']}" if r.get("Waiting On") else "") if x)
+                lis.append(f'<li data-p="{_pk(profile)}" data-id="{escape(r["ID"])}"><div class="row"><div class="t">'
+                           f'{escape(str(r.get("Work") or ""))}</div>{flag}</div><div class="m">{escape(meta)}</div></li>')
+            blocks.append(f'<details{" open" if n_late else ""}><summary><b>{escape(str(area))}</b> '
+                          f'<span class="sub">{len(items)} open{f" \u00b7 <span class=red>{n_late} late</span>" if n_late else ""}</span>'
+                          f'</summary><ul>{"".join(lis)}</ul></details>')
+        html.append(
+            f'<div class="grp trk" data-p="{_pk(profile)}"><div class="trk-h"><b>{escape(str(name))}</b>'
+            f'<span class="sub">{escape(profile)} \u00b7 {escape(", ".join(files))}</span>'
+            f'<span class="trk-c">{len(open_)} open \u00b7 <span class="{"red" if late else ""}">{len(late)} late</span> \u00b7 {done} done</span></div>'
+            f'{f"<div class=stuck-row><span class=sub>Stuck on:</span> {chips}</div>" if chips else ""}'
+            f'{"".join(blocks) or "<p class=empty>All done.</p>"}</div>')
+    html.append('<p class="empty none-here" hidden>No trackers for this profile yet.</p>')
+    return "".join(html)
 
 
 def _per_profile(rows, key_of) -> dict:
@@ -591,6 +753,7 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
     greet = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
     contacts_js = json.dumps(_contacts(store), ensure_ascii=False).replace("</", "<\\/")
     team_js = json.dumps(_team(store), ensure_ascii=False).replace("</", "<\\/")
+    people_js = json.dumps(_people(store), ensure_ascii=False).replace("</", "<\\/")
     profiles_js = json.dumps([{"key": p["key"], "name": p["name"]} for p in profiles.PROFILES]).replace("</", "<\\/")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -612,9 +775,10 @@ def render(store: Store, now: datetime, meetings=None, sync: dict | None = None,
 <section><h2>\u270b Waiting on me</h2>{_actions(waiting, "Nobody is waiting on you.")}</section>
 <section><h2>\u23f0 Overdue by owner</h2>{"".join(od_html) or '<p class="empty">Nothing overdue.</p>'}</section>
 <section><h2>\U0001F4C5 This week's meetings</h2>{_meetings(store, meetings, now)}</section>
-<section class="wide team"><h2>\U0001F465 Pending with team</h2><div id="team"></div></section>
+<section class="wide team"><h2>\U0001F465 People <input id="ppl-q" class="ppl-q" type="search" placeholder="Search a name\u2026" autocomplete="off"></h2><div id="team"></div></section>
+<section class="wide trackers"><h2>\U0001F4CB Project trackers</h2>{_trackers_html(store, today)}</section>
 <section class="wide"><h2>\U0001F4AC Mail &amp; WhatsApp · last 24h</h2>{_messages(msgs or [])}</section>
-</div></main><script>{THEME_JS}{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js).replace("__TEAM__", team_js)}</script></body></html>"""
+</div></main><script>{THEME_JS}{TABS_JS}{ACTIONS_JS.replace("__PROFILES__", profiles_js).replace("__CONTACTS__", contacts_js).replace("__TEAM__", team_js).replace("__PEOPLE__", people_js)}</script></body></html>"""
 
 
 def render_markdown(store: Store, now: datetime, meetings=None, sync: dict | None = None) -> str:

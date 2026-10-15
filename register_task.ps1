@@ -27,3 +27,13 @@ $fillSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstan
     -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 Register-ScheduledTask -TaskName "Alcove Second Brain - keep site filled" -Action $fill -Trigger $every10 `
     -Settings $fillSettings -Description "Re-upload the dashboard if a redeploy left the site empty" -Force
+
+# Every 30 minutes: read new/changed team tracker files (OneDrive\Alcove Trackers\<Project>).
+# Claude is only used when a file actually changed.
+$trk = New-ScheduledTaskAction -Execute (Join-Path $PSScriptRoot ".venv\Scripts\pythonw.exe") `
+    -Argument "-m secondbrain.trackers" -WorkingDirectory $PSScriptRoot
+$every30 = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 30)
+$trkSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 60)
+Register-ScheduledTask -TaskName "Alcove Second Brain - trackers" -Action $trk -Trigger $every30 `
+    -Settings $trkSettings -Description "Read new/changed team tracker files into the Tasks sheet" -Force
