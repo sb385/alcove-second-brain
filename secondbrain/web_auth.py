@@ -3,6 +3,7 @@
     python -m secondbrain.web_auth                 # upload token only (site stays open)
     python -m secondbrain.web_auth --password      # also require a login password
     python -m secondbrain.web_auth --keep-token    # keep the current upload token
+    python -m secondbrain.web_auth --password --value <pw>   # set a chosen password
 
 Writes the plain values to .env (DASHBOARD_PASSWORD, UPLOAD_TOKEN; git-ignored)
 and only salted hashes to web_auth.json (committed, read by app.py).
@@ -15,6 +16,7 @@ import hashlib
 import json
 import re
 import secrets
+from datetime import datetime, timezone
 
 from .config import ROOT
 
@@ -32,6 +34,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep-token", action="store_true")
     ap.add_argument("--password", action="store_true", help="also set a website password")
+    ap.add_argument("--value", help="use this password instead of a random one")
     a = ap.parse_args()
 
     env_path = ROOT / ".env"
@@ -40,7 +43,7 @@ def main() -> None:
     token = m.group(1) if (a.keep_token and m) else secrets.token_hex(24)
     # Readable but strong: 4 groups of 4 from an unambiguous alphabet.
     alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-    password = "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(4))
+    password = a.value or "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(4))
 
     salt = secrets.token_bytes(16)
     record = {"upload_token_sha256": hashlib.sha256(token.encode()).hexdigest()}
@@ -49,6 +52,8 @@ def main() -> None:
             "salt": salt.hex(),
             "iterations": ITERATIONS,
             "hash": hashlib.pbkdf2_hmac("sha256", password.encode(), salt, ITERATIONS).hex(),
+            # Website-set passwords older than this are ignored (see app.py).
+            "set_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
     (ROOT / "web_auth.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
     if a.password:

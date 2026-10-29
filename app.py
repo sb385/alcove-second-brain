@@ -81,11 +81,16 @@ def _password_record() -> dict | None:
 
 
 def _override_record() -> dict | None:
+    # A restart can bring back an old copy of STORE, so a website-set password
+    # counts only if it was set after the password in web_auth.json.
     if OVERRIDE.exists():
         try:
-            return json.loads(OVERRIDE.read_text(encoding="utf-8"))["password"]
+            rec = json.loads(OVERRIDE.read_text(encoding="utf-8"))["password"]
         except (ValueError, KeyError):
-            pass
+            return None
+        base = (_password_record() or {}).get("set_at", "")
+        if not base or rec.get("set_at", "") > base:
+            return rec
     return None
 
 
@@ -336,7 +341,8 @@ def change_password():
     if new != request.form.get("repeat", ""):
         return _form("The two new passwords don't match."), 400
     tmp = OVERRIDE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"password": _hash_password(new)}), encoding="utf-8")
+    rec = {**_hash_password(new), "set_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    tmp.write_text(json.dumps({"password": rec}), encoding="utf-8")
     tmp.replace(OVERRIDE)
     return _form("Password changed. Your browser will ask you to log in again with the "
                  "new password.", ok=True)
