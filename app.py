@@ -162,10 +162,13 @@ def dashboard():
 # to the Excel, then acknowledges them. Redeploys wipe STORE, so the PC also
 # pulls them before every push (scripts/pre-push).
 ACTIONS = STORE / "actions.jsonl"
-ACTION_KINDS = {"done", "followup", "move", "shift", "nudge", "contact"}
+ACTION_KINDS = {"done", "followup", "move", "shift", "nudge", "contact", "wmslink", "wmsunlink"}
 # nudge   = "forwarded via WhatsApp/email to X" (logged in the item's Notes)
 # contact = "Name|phone|email" added from the dashboard (item is empty)
+# wmslink / wmsunlink = a Google Drive/Docs link added to or removed from the
+#           Work Management tab (item is empty)
 ITEM_RE = re.compile(r"^[CART]-\d{1,6}$")
+LINK_RE = re.compile(r"^https://(docs|drive|sheets)\.google\.com/\S{5,490}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 try:
     from secondbrain.profiles import NAMES as PROFILE_NAMES
@@ -200,6 +203,9 @@ def item_action():
         parts = value.split("|")
         if item or len(parts) != 3 or not parts[0].strip() or len(value) > 200 \
                 or not (re.fullmatch(r"\d{10,15}", parts[1]) or "@" in parts[2]):
+            abort(400)
+    elif kind in ("wmslink", "wmsunlink"):
+        if item or not LINK_RE.match(value):
             abort(400)
     elif not ITEM_RE.match(item):
         abort(400)
