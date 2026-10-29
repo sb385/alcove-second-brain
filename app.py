@@ -48,7 +48,26 @@ class _Prefix:
 
 
 app.wsgi_app = _Prefix(app.wsgi_app)
-STORE = Path(os.environ.get("STORE_DIR", "published"))
+def _pick_store() -> Path:
+    """Where uploads live. Not inside the app folder: the platform rebuilds that
+    folder on every deploy/restart and brought back a stale 14 Oct copy of it.
+    Prefer the home folder; else /tmp (lost on restart, but then the site shows
+    "Refreshing" and the PC refills it within minutes, never an old page)."""
+    if os.environ.get("STORE_DIR"):
+        return Path(os.environ["STORE_DIR"])
+    for cand in (Path.home() / ".second-brain-store", Path("/tmp/second-brain-store")):
+        try:
+            cand.mkdir(parents=True, exist_ok=True)
+            probe = cand / ".write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            return cand
+        except OSError:
+            continue
+    return Path("published")
+
+
+STORE = _pick_store()
 STORE.mkdir(parents=True, exist_ok=True)
 FILES = {
     "dashboard": "dashboard.html",
@@ -236,7 +255,10 @@ def status():
     sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not _check_token(sent):
         abort(401)
-    return {"dashboard": (STORE / FILES["dashboard"]).exists()}
+    path = STORE / FILES["dashboard"]
+    return {"dashboard": path.exists(), "store": str(STORE),
+            "uploaded": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+            if path.exists() else None}
 
 
 @app.get("/api/actions")

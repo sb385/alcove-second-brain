@@ -1,4 +1,4 @@
-# Registers the Windows scheduled task: sync every 2 hours from 08:00 to 20:00
+﻿# Registers the Windows scheduled task: sync every 2 hours from 08:00 to 20:00
 # (08, 10, 12, 14, 16, 18, 20). This PC's clock is IST. The 08:00 run also sends
 # the WhatsApp summary. StartWhenAvailable catches up if the PC was off; a run
 # that is still going when the next one is due is not doubled up.
@@ -17,11 +17,11 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -Multipl
 Register-ScheduledTask -TaskName "Alcove Second Brain" -Action $action -Trigger $trigger `
     -Settings $settings -Description "Second-brain sync every 2h, 08:00-20:00 IST" -Force
 
-# Every 10 minutes: if a site redeploy wiped the dashboard, upload it again.
+# Every 5 minutes: if a site redeploy wiped the dashboard, upload it again.
 # No Claude involved; pythonw runs without a console window.
 $fill = New-ScheduledTaskAction -Execute (Join-Path $PSScriptRoot ".venv\Scripts\pythonw.exe") `
     -Argument "-m secondbrain.publish --if-empty" -WorkingDirectory $PSScriptRoot
-$every10 = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 10)
+$every10 = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 5)
 $fillSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
