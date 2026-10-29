@@ -283,7 +283,50 @@ def actions_ack():
     tmp = ACTIONS.with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(a) + "\n" for a in keep), encoding="utf-8")
     tmp.replace(ACTIONS)
+    for uid in done:  # an acknowledged upload has reached the PC: drop the copy here
+        for f in UPLOADS.glob(f"{uid}_*") if UPLOADS.exists() else []:
+            try:
+                f.unlink(missing_ok=True)
+            except OSError:
+                pass  # still open; the next deploy clears the store anyway
     return {"remaining": len(keep)}
+
+
+# ---------- Work Management file upload ----------
+# The tab's Upload button posts a work plan here; it is queued as a "wmsfile"
+# action, the PC downloads it (token), puts it in the Drive folder and acks.
+UPLOADS = STORE / "uploads"
+UPLOAD_EXT = {".xlsx", ".xls", ".csv", ".pdf", ".docx", ".doc"}
+
+
+@app.post("/api/wms-upload")
+@login_required
+def wms_upload():
+    if request.headers.get("X-Second-Brain") != "1":
+        abort(403)  # same cross-site guard as item actions
+    f = request.files.get("file")
+    name = re.sub(r"[^\w .()&-]+", "_", Path((f.filename if f else "") or "").name).strip()[:120]
+    if not f or not name or Path(name).suffix.lower() not in UPLOAD_EXT:
+        abort(400)
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    uid = secrets.token_hex(8)
+    f.save(UPLOADS / f"{uid}_{name}")
+    rec = {"uid": uid, "item": "", "action": "wmsfile", "value": name,
+           "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    with ACTIONS.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec) + "\n")
+    return rec
+
+
+@app.get("/api/wms-upload/<uid>")
+def wms_upload_get(uid: str):
+    sent = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not _check_token(sent) or not re.fullmatch(r"[0-9a-f]{16}", uid):
+        abort(401)
+    hits = list(UPLOADS.glob(f"{uid}_*")) if UPLOADS.exists() else []
+    if not hits:
+        abort(404)
+    return send_file(hits[0], as_attachment=True, download_name=hits[0].name.split("_", 1)[1])
 
 
 @app.get("/excel")
