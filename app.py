@@ -80,20 +80,35 @@ def _password_record() -> dict | None:
     return _AUTH.get("password")
 
 
+def _override_record() -> dict | None:
+    if OVERRIDE.exists():
+        try:
+            return json.loads(OVERRIDE.read_text(encoding="utf-8"))["password"]
+        except (ValueError, KeyError):
+            pass
+    return None
+
+
 def _hash_password(password: str) -> dict:
     salt = secrets.token_bytes(16)
     return {"salt": salt.hex(), "iterations": PBKDF2_ITERATIONS,
             "hash": hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS).hex()}
 
 
-def _check_password(given: str) -> bool:
-    if os.environ.get("DASHBOARD_PASSWORD"):
-        return _same(given, os.environ["DASHBOARD_PASSWORD"])
-    rec = _password_record()
+def _matches(given: str, rec: dict | None) -> bool:
     if not rec or not given:
         return False
     digest = hashlib.pbkdf2_hmac("sha256", given.encode(), bytes.fromhex(rec["salt"]), rec["iterations"])
     return secrets.compare_digest(digest.hex(), rec["hash"])
+
+
+def _check_password(given: str) -> bool:
+    # Two passwords open the site: the one set on the website (the everyday
+    # password) and the PC's recovery password from web_auth.json, so a reset
+    # from the PC works even when the website one is forgotten.
+    if os.environ.get("DASHBOARD_PASSWORD"):
+        return _same(given, os.environ["DASHBOARD_PASSWORD"])
+    return _matches(given, _override_record()) or _matches(given, _password_record())
 
 
 def _check_token(given: str) -> bool:
